@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Conversor HoloPrint → Mesa de Construção</title>
+<style>:root{--bg:#f6f5f2;--card:#fff;--tx:#1d1d1b;--mut:#6b6a64;--bd:#dcdad3;--ac:#2f7d4f;--acx:#fff;--er:#b3261e;--wa:#8a5a00;--ok:#2f7d4f}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--card:#222220;--tx:#eceae4;--mut:#a09e96;--bd:#3a3a36;--ac:#58b27a;--acx:#0d1a12;--er:#ff8a80;--wa:#e6b450;--ok:#58b27a}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(28px + env(safe-area-inset-bottom,0px));max-width:720px;margin:0 auto}
+h1{font-size:1.35rem;margin:6px 0 2px}
+h2{font-size:1.05rem;margin:0 0 8px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:.92rem}
+section{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.btn,button.principal{display:inline-block;background:var(--ac);color:var(--acx);border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;text-align:center}
+button:disabled{opacity:.5}
+input[type=file]{display:none}
+label.btn{margin-bottom:10px}
+.dica{color:var(--mut);font-size:.88rem;margin:6px 0}
+.pack{border:1px solid var(--bd);border-radius:12px;padding:10px;margin-top:10px}
+.ph{display:flex;justify-content:space-between;align-items:center;gap:8px;overflow-wrap:anywhere}
+.peq{background:none;border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:2px 9px;font:inherit;cursor:pointer}
+.meta{color:var(--mut);font-size:.88rem;margin:2px 0 8px}
+.campo{display:block;font-size:.88rem;color:var(--mut);margin:8px 0}
+.campo input{display:block;width:100%;margin-top:3px;padding:10px;border-radius:9px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font:inherit}
+.aviso{color:var(--wa);font-size:.88rem;margin:6px 0}
+details summary{cursor:pointer;margin-top:8px;font-size:.92rem}
+.mats{max-height:260px;overflow-y:auto;border:1px solid var(--bd);border-radius:9px}
+.mat{display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid var(--bd);font-size:.9rem}
+.mat:last-child{border-bottom:0}
+.mat .mn{flex:1}.mat .mc{color:var(--mut);font-variant-numeric:tabular-nums}
+.opt{display:flex;gap:8px;align-items:flex-start;margin:6px 0 10px;font-size:.95rem}
+.linha{display:block;font-size:.88rem;color:var(--mut);margin:0 0 10px}
+.linha input{display:block;width:100%;margin-top:3px;padding:10px;border-radius:9px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font:inherit}
+#log{margin-top:10px;font-size:.88rem;max-height:220px;overflow-y:auto}
+#log .err{color:var(--er)}#log .ok{color:var(--ok)}
+#baixar{margin-top:10px;display:block}
+#resumo{margin-top:8px;font-size:.92rem}
+footer{color:var(--mut);font-size:.8rem;text-align:center;margin-top:16px}
+</style>
+</head>
+<body>
+<h1>Conversor HoloPrint → Mesa de Construção</h1>
+<p class="sub">Escolha os packs do HoloPrint e eu gero o addon com todos eles no menu da mesa. Tudo roda no seu aparelho, sem internet e sem enviar nada.</p>
+
+<section>
+  <h2>1. Packs do HoloPrint</h2>
+  <label class="btn" for="arqPacks">Escolher pack(s) .mcpack</label>
+  <input type="file" id="arqPacks" multiple>
+  <p class="dica">Pode escolher vários de uma vez, ou voltar aqui e adicionar mais.</p>
+  <div id="packs"></div>
+</section>
+
+<section>
+  <h2>2. Addon base <small style="font-weight:400;color:var(--mut)">(opcional)</small></h2>
+  <p class="dica">Se você tem uma versão mais nova do addon (com mais funções), escolha ela aqui. Eu uso os arquivos dela e só troco as construções.</p>
+  <label class="btn" for="arqBase">Escolher addon .mcaddon</label>
+  <input type="file" id="arqBase">
+  <div id="baseinfo" class="dica"></div>
+</section>
+
+<section>
+  <h2>3. Gerar</h2>
+  <label class="linha">Nome do addon <small>(aparece no arquivo e no menu do jogo junto com o HoloPrint)</small><input type="text" id="nomeSaida" value="Mesa de Construção" autocapitalize="none" spellcheck="false"></label>
+  <label class="opt"><input type="checkbox" id="bump" checked><span>Aumentar a versão do addon (recomendado: o Minecraft só troca o addon antigo se a versão for maior)</span></label>
+  <button class="principal" id="gerar" disabled>Gerar addon</button>
+  <div id="log"></div>
+  <div id="resumo"></div>
+  <a class="btn" id="baixar" hidden>Baixar</a>
+</section>
+<footer>Gera o mesmo formato que a Mesa de Construção v1.3.1 usa hoje.</footer>
+<script>
+// ===== ZIP (leitura e escrita) sem bibliotecas externas =====
+const enc = new TextEncoder();
+const dec = new TextDecoder("utf-8");
+
+async function streamBytes(readable) {
+  const chunks = [];
+  const reader = readable.getReader();
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.length;
+  }
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out;
+}
+async function inflateRaw(bytes) {
+  const ds = new DecompressionStream("deflate-raw");
+  const w = ds.writable.getWriter();
+  w.write(bytes).catch(() => {});
+  w.close().catch(() => {});
+  return streamBytes(ds.readable);
+}
+async function deflateRaw(bytes) {
+  const cs = new CompressionStream("deflate-raw");
+  const w = cs.writable.getWriter();
+  w.write(bytes).catch(() => {});
+  w.close().catch(() => {});
+  return streamBytes(cs.readable);
+}
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// Lê um zip e devolve { nomes: [...], ler(nome) -> Promise<Uint8Array> }
+function readZip(buf) {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("Arquivo não é um zip válido (ou está cortado/incompleto).");
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const entries = new Map();
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("Diretório do zip corrompido.");
+    const flags = dv.getUint16(p + 8, true);
+    const method = dv.getUint16(p + 10, true);
+    const csize = dv.getUint32(p + 20, true);
+    const usize = dv.getUint32(p + 24, true);
+    const nlen = dv.getUint16(p + 28, true);
+    const elen = dv.getUint16(p + 30, true);
+    const clen = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true);
+    const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+    entries.set(name, { method, csize, usize, off, flags });
+    p += 46 + nlen + elen + clen;
+  }
+  return {
+    nomes: [...entries.keys()].filter((n) => !n.endsWith("/")),
+    tem: (n) => entries.has(n),
+    async ler(name) {
+      const e = entries.get(name);
+      if (!e) throw new Error("Arquivo não encontrado no zip: " + name);
+      const nlen = dv.getUint16(e.off + 26, true);
+      const elen = dv.getUint16(e.off + 28, true);
+      const start = e.off + 30 + nlen + elen;
+      const raw = u8.subarray(start, start + e.csize);
+      if (e.method === 0) return raw.slice();
+      if (e.method === 8) return inflateRaw(raw);
+      throw new Error("Método de compressão não suportado no zip: " + e.method);
+    },
+  };
+}
+
+// files: array de { name, data: Uint8Array }  -> Uint8Array do zip
+async function writeZip(files) {
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  const DOS_TIME = 0, DOS_DATE = (46 << 9) | (1 << 5) | 1; // 2026-01-01
+  for (const f of files) {
+    const nameBytes = enc.encode(f.name);
+    const data = f.data;
+    const crc = crc32(data);
+    let method = 8;
+    let comp = data.length > 64 ? await deflateRaw(data) : data;
+    if (data.length <= 64 || comp.length >= data.length) { comp = data; method = 0; }
+    const lh = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0x0800, true);
+    lv.setUint16(8, method, true);
+    lv.setUint16(10, DOS_TIME, true);
+    lv.setUint16(12, DOS_DATE, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, comp.length, true);
+    lv.setUint32(22, data.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
+    lh.set(nameBytes, 30);
+    parts.push(lh, comp);
+    const ch = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, method, true);
+    cv.setUint16(12, DOS_TIME, true);
+    cv.setUint16(14, DOS_DATE, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, comp.length, true);
+    cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(nameBytes, 46);
+    central.push(ch);
+    offset += lh.length + comp.length;
+  }
+  const cdSize = central.reduce((a, c) => a + c.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+  const all = [...parts, ...central, end];
+  const total = all.reduce((a, c) => a + c.length, 0);
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const c of all) { out.set(c, o); o += c.length; }
+  return out;
+}
+
+// ===== NBT (Bedrock, little-endian) leitura e escrita preservando tipos =====
+// compound = { t:10, e:[[nome, tipo, valor], ...] }; list = { et, items:[...] }; long = BigInt
+function nbtParse(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let p = 0;
+  const td = new TextDecoder();
+  const str = () => { const n = dv.getUint16(p, true); p += 2; const s = td.decode(u8.subarray(p, p + n)); p += n; return s; };
+  function payload(t) {
+    switch (t) {
+      case 1: return dv.getInt8(p++);
+      case 2: { const v = dv.getInt16(p, true); p += 2; return v; }
+      case 3: { const v = dv.getInt32(p, true); p += 4; return v; }
+      case 4: { const v = dv.getBigInt64(p, true); p += 8; return v; }
+      case 5: { const v = dv.getFloat32(p, true); p += 4; return v; }
+      case 6: { const v = dv.getFloat64(p, true); p += 8; return v; }
+      case 7: { const n = dv.getInt32(p, true); p += 4; const v = u8.slice(p, p + n); p += n; return v; }
+      case 8: return str();
+      case 9: {
+        const et = dv.getInt8(p++); const n = dv.getInt32(p, true); p += 4;
+        if (et === 3) { const a = new Int32Array(n); for (let i = 0; i < n; i++) { a[i] = dv.getInt32(p, true); p += 4; } return { et, items: a }; }
+        const items = new Array(n);
+        for (let i = 0; i < n; i++) items[i] = payload(et);
+        return { et, items };
+      }
+      case 10: {
+        const e = [];
+        for (;;) { const tt = dv.getInt8(p++); if (tt === 0) break; const k = str(); e.push([k, tt, payload(tt)]); }
+        return { t: 10, e };
+      }
+      case 11: { const n = dv.getInt32(p, true); p += 4; const a = new Int32Array(n); for (let i = 0; i < n; i++) { a[i] = dv.getInt32(p, true); p += 4; } return a; }
+      case 12: { const n = dv.getInt32(p, true); p += 4; const a = new Array(n); for (let i = 0; i < n; i++) { a[i] = dv.getBigInt64(p, true); p += 8; } return a; }
+      default: throw new Error("Tipo NBT desconhecido: " + t);
+    }
+  }
+  const rt = dv.getInt8(p++);
+  const rname = str();
+  return { name: rname, type: rt, value: payload(rt) };
+}
+function nbtWrite(root) {
+  const te = new TextEncoder();
+  let buf = new Uint8Array(1 << 20), dv = new DataView(buf.buffer), p = 0;
+  const need = (n) => { if (p + n > buf.length) { let m = buf.length * 2; while (m < p + n) m *= 2; const nb = new Uint8Array(m); nb.set(buf.subarray(0, p)); buf = nb; dv = new DataView(buf.buffer); } };
+  const str = (s) => { const b = te.encode(s); need(2 + b.length); dv.setUint16(p, b.length, true); p += 2; buf.set(b, p); p += b.length; };
+  function payload(t, v) {
+    switch (t) {
+      case 1: need(1); dv.setInt8(p++, v); break;
+      case 2: need(2); dv.setInt16(p, v, true); p += 2; break;
+      case 3: need(4); dv.setInt32(p, v, true); p += 4; break;
+      case 4: need(8); dv.setBigInt64(p, v, true); p += 8; break;
+      case 5: need(4); dv.setFloat32(p, v, true); p += 4; break;
+      case 6: need(8); dv.setFloat64(p, v, true); p += 8; break;
+      case 7: need(4 + v.length); dv.setInt32(p, v.length, true); p += 4; buf.set(v, p); p += v.length; break;
+      case 8: str(v); break;
+      case 9: {
+        need(5); dv.setInt8(p++, v.et); dv.setInt32(p, v.items.length, true); p += 4;
+        if (v.et === 3) { need(4 * v.items.length); for (let i = 0; i < v.items.length; i++) { dv.setInt32(p, v.items[i], true); p += 4; } }
+        else for (let i = 0; i < v.items.length; i++) payload(v.et, v.items[i]);
+        break;
+      }
+      case 10: {
+        for (const [k, tt, val] of v.e) { need(1); dv.setInt8(p++, tt); str(k); payload(tt, val); }
+        need(1); dv.setInt8(p++, 0); break;
+      }
+      case 11: need(4 + 4 * v.length); dv.setInt32(p, v.length, true); p += 4; for (let i = 0; i < v.length; i++) { dv.setInt32(p, v[i], true); p += 4; } break;
+      case 12: need(4 + 8 * v.length); dv.setInt32(p, v.length, true); p += 4; for (let i = 0; i < v.length; i++) { dv.setBigInt64(p, v[i], true); p += 8; } break;
+    }
+  }
+  need(1); dv.setInt8(p++, root.type);
+  str(root.name);
+  payload(root.type, root.value);
+  return buf.slice(0, p);
+}
+// utilitários de navegação
+function nget(comp, key) { const f = comp.e.find((x) => x[0] === key); return f ? f[2] : undefined; }
+function ngetEntry(comp, key) { return comp.e.find((x) => x[0] === key); }
+
+// ===== Nomes em português (rótulos dos materiais) =====
+const EXATO = {
+  "dirt_path": "Caminho de terra", "grass_path": "Caminho de terra", "chest": "Baú", "trapped_chest": "Baú com armadilha",
+  "barrel": "Barril", "hopper": "Funil", "piston": "Pistão", "sticky_piston": "Pistão pegajoso", "observer": "Observador",
+  "lever": "Alavanca", "ladder": "Escada de mão", "lantern": "Lanterna", "soul_lantern": "Lanterna da alma",
+  "torch": "Tocha", "soul_torch": "Tocha da alma", "redstone_torch": "Tocha de redstone", "glass": "Vidro",
+  "glass_pane": "Painel de vidro", "iron_bars": "Barras de ferro", "fence_gate": "Portão de cerca",
+  "crafting_table": "Mesa de trabalho", "furnace": "Fornalha", "blast_furnace": "Alto-forno", "smoker": "Defumador",
+  "dropper": "Liberador", "dispenser": "Dispensador", "tnt": "TNT", "bookshelf": "Estante de livros",
+  "grass_block": "Bloco de grama", "dirt": "Terra", "coarse_dirt": "Terra grossa", "farmland": "Terra arada",
+  "sand": "Areia", "gravel": "Cascalho", "stone": "Pedra", "cobblestone": "Pedregulho", "bedrock": "Rocha matriz",
+  "sea_lantern": "Lanterna do mar", "glowstone": "Pedra luminosa", "shroomlight": "Luz de fungo",
+  "ochre_froglight": "Luz de sapo ocre", "verdant_froglight": "Luz de sapo verdejante", "pearlescent_froglight": "Luz de sapo perolada",
+  "slime": "Bloco de slime", "honey_block": "Bloco de mel", "hay_block": "Fardo de feno", "bone_block": "Bloco de osso",
+  "iron_block": "Bloco de ferro", "gold_block": "Bloco de ouro", "diamond_block": "Bloco de diamante",
+  "emerald_block": "Bloco de esmeralda", "coal_block": "Bloco de carvão", "redstone_block": "Bloco de redstone",
+  "copper_block": "Bloco de cobre", "netherite_block": "Bloco de netherita", "lapis_block": "Bloco de lápis-lazúli",
+  "quartz_block": "Bloco de quartzo", "obsidian": "Obsidiana", "crying_obsidian": "Obsidiana chorosa",
+  "netherrack": "Netherrack", "soul_sand": "Areia da alma", "soul_soil": "Terra da alma", "magma": "Bloco de magma",
+  "ice": "Gelo", "packed_ice": "Gelo compactado", "blue_ice": "Gelo azul", "snow": "Neve", "snow_layer": "Neve (camada)",
+  "clay": "Argila", "sponge": "Esponja", "wet_sponge": "Esponja molhada", "moss_block": "Bloco de musgo", "moss_carpet": "Carpete de musgo",
+  "mud": "Lama", "packed_mud": "Lama compactada", "mud_bricks": "Tijolos de lama", "cactus": "Cacto",
+  "pumpkin": "Abóbora", "carved_pumpkin": "Abóbora talhada", "jack_o_lantern": "Lanterna de abóbora", "melon_block": "Melancia",
+  "redstone_lamp": "Lâmpada de redstone", "note_block": "Bloco musical", "jukebox": "Jukebox", "beacon": "Sinalizador",
+  "anvil": "Bigorna", "enchanting_table": "Mesa de encantamentos", "bell": "Sino", "campfire": "Fogueira", "soul_campfire": "Fogueira da alma",
+  "composter": "Composteira", "cauldron": "Caldeirão", "flower_pot": "Vaso de flor", "item_frame": "Moldura", "glow_frame": "Moldura luminosa",
+  "water_bucket": "Balde de água (fonte)", "lava_bucket": "Balde de lava (fonte)", "tripwire_hook": "Gancho de fio de armadilha",
+  "redstone": "Redstone", "repeater": "Repetidor", "comparator": "Comparador", "daylight_detector": "Sensor de luz do dia",
+  "target": "Alvo", "lightning_rod": "Para-raios", "slab": "Laje", "end_rod": "Bastão do End", "chain": "Corrente",
+  "sculk": "Sculk", "sculk_sensor": "Sensor de sculk", "sculk_shrieker": "Gritador de sculk", "sculk_catalyst": "Catalisador de sculk",
+  "calcite": "Calcita", "dripstone_block": "Bloco de pedra de gotejamento", "amethyst_block": "Bloco de ametista",
+  "budding_amethyst": "Ametista em brotação", "smooth_stone": "Pedra lisa", "stonecutter_block": "Cortador de pedra",
+  "loom": "Tear", "cartography_table": "Mesa de cartografia", "fletching_table": "Mesa de fletcher", "smithing_table": "Mesa de ferraria",
+  "grindstone": "Pedra de amolar", "lectern": "Atril", "bed": "Cama", "cake": "Bolo", "brewing_stand": "Aparelho de poções",
+  "water": "Água", "lava": "Lava", "white_wool": "Lã branca", "glowstone_block": "Pedra luminosa",
+};
+// material: [nome, gênero]
+const MAT = {
+  dark_oak: ["carvalho escuro", "m"], pale_oak: ["carvalho pálido", "m"], oak: ["carvalho", "m"], spruce: ["abeto", "m"],
+  birch: ["bétula", "f"], jungle: ["selva", "f"], acacia: ["acácia", "f"], mangrove: ["mangue", "m"], cherry: ["cerejeira", "f"],
+  bamboo: ["bambu", "m"], crimson: ["carmesim", "m"], warped: ["fungo distorcido", "m"], azalea: ["azaleia", "f"],
+  flowering_azalea: ["azaleia florida", "f"], stone: ["pedra", "f"], cobblestone: ["pedregulho", "m"], deepslate: ["ardósia", "f"],
+  tuff: ["tufo", "m"], blackstone: ["pedra negra", "f"], basalt: ["basalto", "m"], granite: ["granito", "m"], diorite: ["diorito", "m"],
+  andesite: ["andesito", "m"], sandstone: ["arenito", "m"], red_sandstone: ["arenito vermelho", "m"], quartz: ["quartzo", "m"],
+  prismarine: ["prismarinho", "m"], purpur: ["púrpura", "f"], copper: ["cobre", "m"], iron: ["ferro", "m"], gold: ["ouro", "m"],
+  diamond: ["diamante", "m"], emerald: ["esmeralda", "f"], netherite: ["netherita", "f"], lapis: ["lápis-lazúli", "m"],
+  amethyst: ["ametista", "f"], mud: ["lama", "f"], clay: ["argila", "f"], terracotta: ["terracota", "f"], wool: ["lã", "f"],
+  concrete: ["concreto", "m"], concrete_powder: ["concreto em pó", "m"], glass: ["vidro", "m"], sand: ["areia", "f"], dirt: ["terra", "f"],
+  gravel: ["cascalho", "m"], obsidian: ["obsidiana", "f"], netherrack: ["netherrack", "f"], end_stone: ["pedra do End", "f"],
+  nether_brick: ["tijolo do Nether", "m"], red_nether_brick: ["tijolo vermelho do Nether", "m"], mossy: ["musgo", "m"], moss: ["musgo", "m"],
+  coal: ["carvão", "m"], bone: ["osso", "m"], snow: ["neve", "f"], ice: ["gelo", "m"], resin: ["resina", "f"], tile: ["ladrilho", "m"],
+  sea: ["mar", "m"], soul: ["alma", "f"], honey: ["mel", "m"], slime: ["slime", "m"], hay: ["feno", "m"], purple: ["roxo", "m"],
+  white: ["branco", "m"], orange: ["laranja", "m"], magenta: ["magenta", "m"], yellow: ["amarelo", "m"], lime: ["verde-limão", "m"],
+  pink: ["rosa", "m"], gray: ["cinza", "m"], cyan: ["ciano", "m"], blue: ["azul", "m"], brown: ["marrom", "m"], green: ["verde", "m"],
+  red: ["vermelho", "m"], black: ["preto", "m"], light_blue: ["azul-claro", "m"], light_gray: ["cinza-claro", "m"],
+};
+const CORES = new Set(["white","orange","magenta","light_blue","yellow","lime","pink","gray","light_gray","cyan","purple","blue","brown","green","red","black"]);
+// adjetivo: [m, f, mp, fp, grupo]  (A = junto do material, B = junto do bloco)
+const ADJ = {
+  polished: ["polido", "polida", "polidos", "polidas", "A"], chiseled: ["cinzelado", "cinzelada", "cinzelados", "cinzeladas", "A"],
+  smooth: ["liso", "lisa", "lisos", "lisas", "A"], cut: ["cortado", "cortada", "cortados", "cortadas", "A"],
+  cracked: ["rachado", "rachada", "rachados", "rachadas", "B"], mossy: ["musgoso", "musgosa", "musgosos", "musgosas", "B"],
+  waxed: ["encerado", "encerada", "encerados", "enceradas", "B"], exposed: ["exposto", "exposta", "expostos", "expostas", "B"],
+  weathered: ["desgastado", "desgastada", "desgastados", "desgastadas", "B"], oxidized: ["oxidado", "oxidada", "oxidados", "oxidadas", "B"],
+  raw: ["bruto", "bruta", "brutos", "brutas", "A"], dark: ["escuro", "escura", "escuros", "escuras", "A"],
+  white: ["branco","branca","brancos","brancas","A"], orange: ["laranja","laranja","laranjas","laranjas","A"], magenta: ["magenta","magenta","magentas","magentas","A"],
+  light_blue: ["azul-claro","azul-clara","azul-claros","azul-claras","A"], yellow: ["amarelo","amarela","amarelos","amarelas","A"], lime: ["verde-limão","verde-limão","verde-limão","verde-limão","A"],
+  pink: ["rosa","rosa","rosa","rosa","A"], gray: ["cinza","cinza","cinza","cinza","A"], light_gray: ["cinza-claro","cinza-clara","cinza-claros","cinza-claras","A"],
+  cyan: ["ciano","ciano","ciano","ciano","A"], purple: ["roxo","roxa","roxos","roxas","A"], blue: ["azul","azul","azuis","azuis","A"], brown: ["marrom","marrom","marrons","marrons","A"],
+  green: ["verde","verde","verdes","verdes","A"], red: ["vermelho","vermelha","vermelhos","vermelhas","A"], black: ["preto","preta","pretos","pretas","A"],
+};
+const ADJ_INV = { stripped: "sem casca" };
+// cabeça: [rótulo, gênero, plural, tipo]  tipo: "o" = externo, "i" = interno (tijolos/ladrilho)
+const HEAD = {
+  slab: ["laje", "f", false, "o"], stairs: ["escada", "f", false, "o"], wall: ["muro", "m", false, "o"], fence: ["cerca", "f", false, "o"],
+  fence_gate: ["portão de cerca", "m", false, "o"], trapdoor: ["alçapão", "m", false, "o"], door: ["porta", "f", false, "o"],
+  button: ["botão", "m", false, "o"], pressure_plate: ["placa de pressão", "f", false, "o"], bars: ["barras", "f", true, "o"],
+  planks: ["tábuas", "f", true, "o"], log: ["tronco", "m", false, "o"], wood: ["madeira", "f", false, "o"], leaves: ["folhas", "f", true, "o"],
+  sign: ["placa", "f", false, "o"], carpet: ["carpete", "m", false, "o"], pane: ["painel", "m", false, "o"], sapling: ["muda", "f", false, "o"],
+  bricks: ["tijolos", "m", true, "i"], brick: ["tijolos", "m", true, "i"], tiles: ["ladrilho", "m", false, "i"], tile: ["ladrilho", "m", false, "i"],
+};
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+function agr(adj, g, pl) { return adj[(pl ? 2 : 0) + (g === "f" ? 1 : 0)]; }
+
+function etiquetaPT(nome) {
+  const n = String(nome).replace(/^minecraft:/, "");
+  if (EXATO[n]) return EXATO[n];
+  let toks = n.split("_");
+  let outer = null, inner = null;
+  const two = toks.slice(-2).join("_");
+  if (toks.length >= 2 && HEAD[two]) { outer = HEAD[two]; toks = toks.slice(0, -2); }
+  else if (HEAD[toks[toks.length - 1]] && toks.length >= 1) {
+    const h = HEAD[toks[toks.length - 1]];
+    if (h[3] === "o") { outer = h; toks = toks.slice(0, -1); }
+  }
+  const lastTok = toks[toks.length - 1];
+  if (HEAD[lastTok] && HEAD[lastTok][3] === "i") { inner = HEAD[lastTok]; toks = toks.slice(0, -1); }
+  else if (!outer && HEAD[lastTok]) { outer = HEAD[lastTok]; toks = toks.slice(0, -1); }
+  // adjetivos e material
+  const adjA = [], adjB = [], inv = [], mats = [];
+  for (let i = 0; i < toks.length; i++) {
+    const t2 = toks[i] + "_" + toks[i + 1];
+    if (i + 1 < toks.length && (MAT[t2] || ADJ[t2])) {
+      if (ADJ[t2]) { (ADJ[t2][4] === "A" ? adjA : adjB).push(ADJ[t2]); }
+      else mats.push(MAT[t2]);
+      i++; continue;
+    }
+    const t = toks[i];
+    if (ADJ_INV[t]) inv.push(ADJ_INV[t]);
+    else if (ADJ[t] && !(mats.length === 0 && i === toks.length - 1 && MAT[t] && CORES.has(t) === false && !outer && !inner && false)) {
+      // cor sozinha como único token vira material (ex.: "white" não ocorre sozinho)
+      (ADJ[t][4] === "A" ? adjA : adjB).push(ADJ[t]);
+    }
+    else if (MAT[t]) mats.push(MAT[t]);
+    else mats.push([t.replace(/^./, (c) => c.toLowerCase()), "m", true]);
+  }
+  const mat = mats.length ? mats[mats.length - 1] : null;
+  const matTxt = mats.map((m) => m[0]).join(" ");
+  const gMat = mat ? mat[1] : "m";
+  const headFinal = inner || outer;
+  let parts = [];
+  if (outer && inner) parts.push(outer[0], inner[0]);
+  else if (outer) parts.push(outer[0]);
+  else if (inner) parts.push(inner[0]);
+  let txt = parts.join(" de ");
+  if (matTxt) txt = txt ? txt + " de " + matTxt : matTxt;
+  if (!txt) txt = n.replace(/_/g, " ");
+  const aTxt = adjA.slice().reverse().map((a) => agr(a, gMat, false));
+  txt += (aTxt.length ? " " + aTxt.join(" ") : "");
+  const gB = headFinal ? headFinal[1] : gMat;
+  const plB = headFinal ? headFinal[2] : false;
+  const bTxt = adjB.slice().reverse().map((a) => agr(a, gB, plB));
+  txt += (bTxt.length ? " " + bTxt.join(" ") : "");
+  if (inv.length) txt += " " + inv.join(" ");
+  return cap(txt);
+}
+
+// ===== Conversão HoloPrint -> Mesa de Construção =====
+const IGNORAR = new Set(["minecraft:air", "minecraft:structure_void", "minecraft:piston_arm_collision", "minecraft:sticky_piston_arm_collision",
+  "minecraft:moving_block", "minecraft:unknown", "minecraft:info_update", "minecraft:info_update2", "minecraft:reserved6",
+  "minecraft:structure_block", "minecraft:jigsaw", "minecraft:command_block", "minecraft:chain_command_block",
+  "minecraft:repeating_command_block", "minecraft:barrier", "minecraft:light_block", "minecraft:light_block_0",
+  "minecraft:light_block_1", "minecraft:light_block_2", "minecraft:light_block_3", "minecraft:light_block_4",
+  "minecraft:light_block_5", "minecraft:light_block_6", "minecraft:light_block_7", "minecraft:light_block_8",
+  "minecraft:light_block_9", "minecraft:light_block_10", "minecraft:light_block_11", "minecraft:light_block_12",
+  "minecraft:light_block_13", "minecraft:light_block_14", "minecraft:light_block_15", "minecraft:border_block",
+  "minecraft:allow", "minecraft:deny"]);
+const LIQUIDOS = { "minecraft:water": "water", "minecraft:flowing_water": "water", "minecraft:lava": "lava", "minecraft:flowing_lava": "lava" };
+const ITEM_BALDE = { water: "minecraft:water_bucket", lava: "minecraft:lava_bucket" };
+const GRATIS_RE = /(froglight|bedrock$|^minecraft:barrier$|budding_amethyst|spawner|reinforced_deepslate|command_block|structure_block|jigsaw|light_block|^minecraft:light_block|end_portal|dragon_egg|monster_egg|infested|vault$|heavy_core|border_block|^minecraft:allow$|^minecraft:deny$)/;
+const APOIO_TOKENS = new Set(["ladder","lantern","lever","torch","button","sign","banner","rail","carpet","plate","repeater","comparator","tripwire","hook","vine","vines","lichen","vein","frame","sapling","propagule","door","candle","pad","fan","kelp","seagrass","cactus","cane","bush","rose","tulip","poppy","dandelion","orchid","allium","bluet","cornflower","lily","peony","lilac","sunflower","mushroom","fungus","roots","blossom","dripleaf","petals","litter","wire","stem","bell","bamboo","cluster","bud","reeds","wheat","carrots","potatoes","beetroot","cocoa","pickle","pickles","flower","fern","grass"]);
+const APOIO_EXATO = new Set(["minecraft:snow_layer","minecraft:redstone_wire","minecraft:tripwire","minecraft:flower_pot","minecraft:bed","minecraft:wheat","minecraft:lit_redstone_lamp_never","minecraft:comparator","minecraft:repeater"]);
+const NAO_APOIO = /(grass_block|grass_path|dirt_path|mushroom_block|_stem_block|bamboo_block|bamboo_planks|bamboo_mosaic|door$|trapdoor|bells?_block)/;
+function precisaApoio(nome) {
+  if (APOIO_EXATO.has(nome)) return true;
+  const n = nome.replace(/^minecraft:/, "");
+  if (/trapdoor$/.test(n) || /^(grass_block|dirt_path|grass_path)$/.test(n) || /(mushroom_block|bamboo_block|bamboo_planks|bamboo_mosaic|bamboo_stairs|bamboo_slab|bamboo_fence|bamboo_button|bamboo_pressure|bamboo_sign|bamboo_trapdoor)/.test(n)) {
+    return /(button|pressure_plate|sign|door)$/.test(n) && !/trapdoor$/.test(n);
+  }
+  const last = n.split("_").pop();
+  return APOIO_TOKENS.has(last);
+}
+function itemDe(nome) {
+  let n = nome;
+  if (n.endsWith("_double_slab")) return n.replace("_double_slab", "_slab");
+  const mapa = {
+    "minecraft:standing_sign": "minecraft:oak_sign", "minecraft:wall_sign": "minecraft:oak_sign",
+    "minecraft:unlit_redstone_torch": "minecraft:redstone_torch", "minecraft:redstone_wire": "minecraft:redstone",
+    "minecraft:unpowered_repeater": "minecraft:repeater", "minecraft:powered_repeater": "minecraft:repeater",
+    "minecraft:unpowered_comparator": "minecraft:comparator", "minecraft:powered_comparator": "minecraft:comparator",
+    "minecraft:lit_redstone_lamp": "minecraft:redstone_lamp", "minecraft:lit_furnace": "minecraft:furnace",
+    "minecraft:lit_blast_furnace": "minecraft:blast_furnace", "minecraft:lit_smoker": "minecraft:smoker",
+    "minecraft:wheat": "minecraft:wheat_seeds", "minecraft:carrots": "minecraft:carrot", "minecraft:potatoes": "minecraft:potato",
+    "minecraft:beetroot": "minecraft:beetroot_seeds", "minecraft:melon_stem": "minecraft:melon_seeds", "minecraft:pumpkin_stem": "minecraft:pumpkin_seeds",
+    "minecraft:reeds": "minecraft:sugar_cane", "minecraft:cocoa": "minecraft:cocoa_beans", "minecraft:sweet_berry_bush": "minecraft:sweet_berries",
+    "minecraft:tripwire": "minecraft:string", "minecraft:daylight_detector_inverted": "minecraft:daylight_detector",
+    "minecraft:frame": "minecraft:item_frame", "minecraft:glow_frame": "minecraft:glow_item_frame", "minecraft:lit_pumpkin": "minecraft:jack_o_lantern",
+    "minecraft:standing_banner": "minecraft:banner", "minecraft:wall_banner": "minecraft:banner",
+    "minecraft:grass_path": "minecraft:dirt_path", "minecraft:grass": "minecraft:grass_block",
+    "minecraft:wooden_door": "minecraft:oak_door", "minecraft:iron_door": "minecraft:iron_door",
+  };
+  if (mapa[n]) return mapa[n];
+  n = n.replace(/_(standing|wall)_sign$/, "_sign");
+  return n;
+}
+function bpiDe(nome) { return nome.endsWith("_double_slab") || /_door$/.test(nome) ? 2 : 1; }
+
+// ----- estrutura -----
+function estruturaRaiz(u8) {
+  const root = nbtParse(u8);
+  if (root.type !== 10) throw new Error("Estrutura inválida (raiz não é compound).");
+  return root;
+}
+function paletaDe(root) {
+  const st = nget(root.value, "structure");
+  const pal = nget(nget(nget(st, "palette"), "default"), "block_palette");
+  return pal.items.map((c) => ({ c, nome: nget(c, "name"), estados: nget(c, "states") }));
+}
+// Aplica os ajustes que o addon espera: folhas persistentes, baús vazios e remove blocos técnicos.
+const TECNICOS_RE = /^(minecraft:structure_block|minecraft:jigsaw|minecraft:command_block|minecraft:chain_command_block|minecraft:repeating_command_block|minecraft:barrier|minecraft:light_block|minecraft:border_block|minecraft:allow|minecraft:deny)/;
+function ajustarEstrutura(root) {
+  let folhas = 0, vazios = 0, tecnicos = 0;
+  const paleta = paletaDe(root);
+  for (const p of paleta) {
+    if (TECNICOS_RE.test(p.nome) || IGNORAR.has(p.nome) && p.nome !== "minecraft:air") {
+      // vira ar na estrutura (.mcstructure), pra não aparecer no mundo
+      const nameEntry = ngetEntry(p.c, "name");
+      if (nameEntry) { nameEntry[2] = "minecraft:air"; p.nome = "minecraft:air"; tecnicos++; }
+      continue;
+    }
+    if (/leaves/.test(p.nome)) {
+      const f = ngetEntry(p.estados, "persistent_bit");
+      if (f && f[2] === 0) { f[2] = 1; folhas++; }
+    }
+  }
+  const st = nget(root.value, "structure");
+  const bpd = nget(nget(nget(st, "palette"), "default"), "block_position_data");
+  if (bpd) for (const [, , bloco] of bpd.e) {
+    const bed = nget(bloco, "block_entity_data");
+    if (!bed) continue;
+    const it = ngetEntry(bed, "Items");
+    if (it) { if (it[2].items.length > 0) vazios++; it[2] = { et: 10, items: [] }; }
+  }
+  return { folhas, vazios, tecnicos };
+}
+function analisarEstrutura(root) {
+  const size = nget(root.value, "size").items;
+  const st = nget(root.value, "structure");
+  const bi = nget(st, "block_indices").items;
+  const l0 = bi[0].items || bi[0];
+  const l1 = bi[1] ? (bi[1].items || bi[1]) : null;
+  const pal = paletaDe(root);
+  const palette = pal.map((p) => {
+    const s = {};
+    for (const [k, t, v] of p.estados.e) s[k] = t === 1 ? !!v : (typeof v === "bigint" ? Number(v) : v);
+    return { n: p.nome, s };
+  });
+  const [sx, sy, sz] = size;
+  const info = pal.map((p, i) => {
+    const n = p.nome;
+    const liq = LIQUIDOS[n];
+    if (IGNORAR.has(n)) return { skip: true };
+    if (liq) {
+      const dep = nget(p.estados, "liquid_depth");
+      return { liq, fonte: !dep || dep === 0 };
+    }
+    return {};
+  });
+  const blocos = [];
+  let ignorados = 0, molhados = 0;
+  for (let y = 0; y < sy; y++) for (let x = 0; x < sx; x++) {
+    const base = (x * sy + y) * sz;
+    for (let z = 0; z < sz; z++) {
+      const pi = l0[base + z];
+      if (l1 && l1[base + z] >= 0 && LIQUIDOS[pal[l1[base + z]].nome]) molhados++;
+      if (pi < 0) continue;
+      if (info[pi].skip) { if (pal[pi].nome !== "minecraft:air") ignorados++; continue; }
+      blocos.push([x, y, z, pi]);
+    }
+  }
+  return { size: [sx, sy, sz], palette, nomes: pal.map((p) => p.nome), info, blocos, ignorados, molhados };
+}
+// materiais "grátis" possíveis (para a tela): um por nome de bloco (sem líquidos)
+function listarMateriais(an) {
+  const cont = new Map();
+  for (const b of an.blocos) {
+    const inf = an.info[b[3]];
+    if (inf.liq) continue;
+    const n = an.nomes[b[3]];
+    cont.set(n, (cont.get(n) || 0) + 1);
+  }
+  return [...cont.entries()].map(([nome, count]) => ({ nome, count, label: etiquetaPT(itemDe(nome)), gratis: GRATIS_RE.test(nome) }))
+    .sort((a, b) => b.count - a.count);
+}
+// gratisSet: Set de nomes de bloco marcados como grátis
+function montarDados(an, gratisSet) {
+  const grupos = new Map();
+  const pegar = (id, init) => { if (!grupos.has(id)) grupos.set(id, { ...init, blocks: [], minPi: 1e9 }); return grupos.get(id); };
+  for (const b of an.blocos) {
+    const pi = b[3]; const nome = an.nomes[pi]; const inf = an.info[pi];
+    let g;
+    if (inf.liq) {
+      const fonteGratis = gratisSet.has(nome) && false;
+      if (inf.fonte && !fonteGratis) { const it = ITEM_BALDE[inf.liq]; g = pegar(it, { id: it, item: it, label: etiquetaPT(it), bpi: 1, phase: 2, free: false }); }
+      else g = pegar("__free_" + inf.liq, { id: "__free_" + inf.liq, item: "__free_" + inf.liq, label: "", bpi: 1, phase: 2, free: true });
+    } else if (gratisSet.has(nome)) {
+      const ph = precisaApoio(nome) ? 1 : 0;
+      g = pegar("__free_" + ph, { id: "__free_" + ph, item: "__free_" + ph, label: "", bpi: 1, phase: ph, free: true });
+    } else {
+      const item = itemDe(nome);
+      const ph = precisaApoio(nome) ? 1 : 0;
+      g = pegar(item, { id: item, item, label: etiquetaPT(item), bpi: bpiDe(nome), phase: ph, free: false });
+    }
+    g.blocks.push(b); if (pi < g.minPi) g.minPi = pi;
+  }
+  const lista = [...grupos.values()];
+  for (const g of lista) g.count = g.free ? 0 : Math.ceil(g.blocks.length / g.bpi);
+  const cont = (g) => (g.free ? 0 : g.blocks.length);
+  lista.sort((a, b) => a.phase - b.phase || (a.free ? 1 : 0) - (b.free ? 1 : 0) || cont(b) - cont(a) || a.minPi - b.minPi);
+  return {
+    size: an.size, palette: an.palette,
+    groups: lista.map((g) => ({ id: g.id, item: g.item, label: g.label, count: g.count, bpi: g.bpi, phase: g.phase, free: g.free, blocks: g.blocks })),
+  };
+}
+function dadosJS(d) {
+  return "// Gerado automaticamente a partir do pack HoloPrint. Não edite à mão.\nexport default " + JSON.stringify(d) + ";\n";
+}
+
+// ----- arquivos por construção -----
+function entidadeBP(id) {
+  return JSON.stringify({
+    format_version: "1.21.0",
+    "minecraft:entity": {
+      description: {
+        identifier: `mesa:holo_${id}`, is_spawnable: false, is_summonable: true, is_experimental: false,
+        properties: {
+          "mesa:layer": { type: "int", range: [0, 512], default: 0, client_sync: true },
+          "mesa:opacity": { type: "int", range: [0, 6], default: 2, client_sync: true },
+          "mesa:tint": { type: "bool", default: false, client_sync: true },
+        },
+      },
+      components: {
+        "minecraft:collision_box": { width: 0.1, height: 0.1 },
+        "minecraft:physics": { has_gravity: false, has_collision: false },
+        "minecraft:pushable": { is_pushable: false, is_pushable_by_piston: false },
+        "minecraft:type_family": { family: ["mesa_holo"] },
+      },
+    },
+  }, null, 2);
+}
+function entidadeRP(id) {
+  const tex = {};
+  for (let i = 0; i < 7; i++) tex["op" + i] = `textures/mesa/${id}_${i}`;
+  tex.default = `textures/mesa/${id}_2`;
+  return JSON.stringify({
+    format_version: "1.10.0",
+    "minecraft:client_entity": {
+      description: {
+        identifier: `mesa:holo_${id}`, materials: { default: "mesa_hologram" }, textures: tex,
+        geometry: { default: `geometry.mesa.${id}` }, render_controllers: [`controller.render.mesa_holo_${id}`],
+        scripts: { should_update_bones_and_effects_offscreen: true },
+      },
+    },
+  }, null, 2);
+}
+function renderController(id, camadas) {
+  const pv = [];
+  for (let i = 0; i < camadas; i++) pv.push({ ["l_" + i]: `q.property('mesa:layer') == 0 || q.property('mesa:layer') == ${i + 1}` });
+  return JSON.stringify({
+    format_version: "1.8.0",
+    render_controllers: {
+      ["controller.render.mesa_holo_" + id]: {
+        arrays: { textures: { "Array.op": [0,1,2,3,4,5,6].map((i) => "Texture.op" + i) } },
+        geometry: "Geometry.default", materials: [{ "*": "Material.default" }],
+        textures: ["Array.op[math.clamp(q.property('mesa:opacity'), 0, 6)]"], part_visibility: pv,
+        ignore_lighting: true, is_hurt_color: { r: 0, g: 0, b: 0, a: 0 }, on_fire_color: { r: 0, g: 0, b: 0, a: 0 },
+        overlay_color: { r: 0.3412, g: 0.6196, b: 0.9804, a: "q.property('mesa:tint') ? 0.2 : 0" },
+      },
+    },
+  });
+}
+function buildsJS(lista) {
+  const imports = lista.map((b) => `import D_${b.id} from "./data/${b.id}.js";`).join("\n");
+  const entradas = lista.map((b) => `  ${b.id}: make(${JSON.stringify(b.id)}, ${JSON.stringify(b.nome)}, D_${b.id}),`).join("\n");
+  return `// Lista de construções da Mesa (gerada automaticamente a partir dos packs HoloPrint).
+${imports}
+
+// Quantos blocos a leste da mesa a construção começa (a mesa ocupa 2 de largura).
+const OFFSET_X = 3;
+
+function make(id, name, d) {
+  const total = d.groups.reduce((a, g) => a + g.blocks.length, 0);
+  return {
+    id, name, total,
+    size: { x: d.size[0], y: d.size[1], z: d.size[2] },
+    offsetX: OFFSET_X,
+    entityId: \`mesa:holo_\${id}\`,
+    structureId: \`mesa:\${id}\`,
+    palette: d.palette,
+    groups: d.groups,
+  };
+}
+
+export const BUILDS = {
+${entradas}
+};
+`;
+}
+function slug(s) {
+  let r = String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!r) r = "construcao";
+  if (/^[0-9]/.test(r)) r = "b_" + r;
+  return r;
+}
+
+// ----- ler um pack do HoloPrint -----
+async function lerPack(buf, nomeArquivo) {
+  const zip = readZip(buf);
+  const nomes = zip.nomes;
+  const estr = nomes.filter((n) => n.toLowerCase().endsWith(".mcstructure"));
+  if (!estr.length) throw new Error("Não achei a estrutura (.mcstructure) dentro do pack. Esse arquivo foi gerado pelo HoloPrint?");
+  const geoNome = nomes.find((n) => /models\/entity\/[^/]*hologram[^/]*\.geo\.json$/i.test(n)) || nomes.find((n) => /models\/entity\/.*\.geo\.json$/i.test(n));
+  if (!geoNome) throw new Error("Não achei o modelo do holograma (.geo.json) dentro do pack.");
+  const texes = nomes.map((n) => { const m = n.match(/hologram_opacity_([0-9.]+)\.png$/i); return m ? { n, o: parseFloat(m[1]) } : null; }).filter(Boolean).sort((a, b) => a.o - b.o);
+  if (texes.length < 7) throw new Error(`Esperava 7 texturas de opacidade no pack e achei ${texes.length}.`);
+  let nomePack = "";
+  try { const m = JSON.parse(dec.decode(await zip.ler("manifest.json"))); nomePack = (m.header && m.header.name) || ""; } catch {}
+  const root = estruturaRaiz(await zip.ler(estr[0]));
+  const ajuste = ajustarEstrutura(root);
+  const an = analisarEstrutura(root);
+  return { zip, nomeArquivo, nomePack, geoNome, texes: texes.slice(0, 7).map((t) => t.n), root, ajuste, an, materiais: listarMateriais(an), avisoEstruturas: estr.length > 1 };
+}
+
+// ----- arquivos gerados por pack -----
+async function arquivosDoPack(pack, id, gratisSet, pastaBP, pastaRP) {
+  const out = [];
+  const dados = montarDados(pack.an, gratisSet);
+  out.push({ name: `${pastaBP}/structures/mesa/${id}.mcstructure`, data: nbtWrite(pack.root) });
+  out.push({ name: `${pastaBP}/scripts/data/${id}.js`, data: enc.encode(dadosJS(dados)) });
+  out.push({ name: `${pastaBP}/entities/mesa_holo_${id}.json`, data: enc.encode(entidadeBP(id)) });
+  const geoTxt = dec.decode(await pack.zip.ler(pack.geoNome));
+  const geoJ = JSON.parse(geoTxt);
+  const geos = geoJ["minecraft:geometry"];
+  const alvo = geos.find((g) => /hologram_0$/.test(g.description.identifier)) || geos.find((g) => !/(overlay|alignment)/.test(g.description.identifier));
+  if (!alvo) throw new Error("Não achei a geometria principal do holograma.");
+  const camadas = alvo.bones.filter((b) => /^l_\d+$/.test(b.name)).length;
+  const d = alvo.description;
+  const novo = { format_version: geoJ.format_version, "minecraft:geometry": [{
+    description: { texture_width: d.texture_width, texture_height: d.texture_height, identifier: `geometry.mesa.${id}`, visible_bounds_width: 256, visible_bounds_height: 300, visible_bounds_offset: [0, 100, 0] },
+    bones: alvo.bones }] };
+  out.push({ name: `${pastaRP}/models/entity/mesa_${id}.geo.json`, data: enc.encode(JSON.stringify(novo)) });
+  out.push({ name: `${pastaRP}/entity/mesa_holo_${id}.entity.json`, data: enc.encode(entidadeRP(id)) });
+  out.push({ name: `${pastaRP}/render_controllers/mesa_holo_${id}.rc.json`, data: enc.encode(renderController(id, camadas)) });
+  for (let i = 0; i < 7; i++) out.push({ name: `${pastaRP}/textures/mesa/${id}_${i}.png`, data: await pack.zip.ler(pack.texes[i]) });
+  return { arquivos: out, camadas, dados };
+}
+
+const BASE_EMBUTIDA = {"Mesa de Construcao BP/pack_icon.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABlUlEQVR4nO3coQ3CUBRAUUqQKCSqg3SQSuZlChSSFcoGVP004Z5j2+R9cfMEoX9al3k7kXU++gAcSwBxAogTQJwA4gQQJ4C4y94Lz+tj6AFu9/nn88/7Zf5ANkCcAOIEECeAOAHECSBOAHECiBNAnADiBBAngDgBxAkgTgBxAogTQJwA4gQQJ4A4AcQJIE4AcbvfBez9b30088fOtwHiBBAngDgBxAkgTgBxAojb/R3g37+Pr8+3AeIEECeAOAHECSBOAHECiBNAnADiBBAngDgBxAkgTgBxAogTQJwA4gQQJ4A4AcQJIE4AcQKIcz9AfL4NECeAOAHECSBOAHECiBNAnPsB4vNtgDgBxAkgTgBxAogTQJwA4gQQJ4A4AcQJIE4AcQKIE0CcAOIEECeAOAHECSBOAHECiBNAnADi3A8Qn28DxAkgTgBxAogTQJwA4gQQ536A+HwbIE4AcQKIE0CcAOIEECeAOAHECSBOAHECiBNAnADiBBAngLhpXebt6ENwHBsgTgBxAogTQJwA4gQQJ4C4L/ZgNVV8SVAKAAAAAElFTkSuQmCC"}, "Mesa de Construcao BP/manifest.json": {"t": "text", "d": "{\n  \"format_version\": 2,\n  \"header\": {\n    \"name\": \"Mesa de Construção v1.3.1 TESTE (BP)\",\n    \"description\": \"v1.3.1 TESTE - Mesa 2x2 que constrói estruturas com holograma, giro e construção parcial.\",\n    \"uuid\": \"f151641f-89a6-418b-b701-9f201968fc12\",\n    \"version\": [\n      1,\n      3,\n      1\n    ],\n    \"min_engine_version\": [\n      1,\n      21,\n      80\n    ]\n  },\n  \"modules\": [\n    {\n      \"type\": \"data\",\n      \"uuid\": \"31627ec5-47e5-47d0-a517-7f24c8e55e71\",\n      \"version\": [\n        1,\n        3,\n        1\n      ]\n    },\n    {\n      \"type\": \"script\",\n      \"language\": \"javascript\",\n      \"uuid\": \"e268e4ce-4213-4cf9-996b-37937f61a5d0\",\n      \"version\": [\n        1,\n        3,\n        1\n      ],\n      \"entry\": \"scripts/main.js\"\n    }\n  ],\n  \"dependencies\": [\n    {\n      \"uuid\": \"26c13a3e-ace6-4002-bf46-00028f89e0fe\",\n      \"version\": [\n        1,\n        3,\n        1\n      ]\n    },\n    {\n      \"module_name\": \"@minecraft/server\",\n      \"version\": \"1.19.0\"\n    },\n    {\n      \"module_name\": \"@minecraft/server-ui\",\n      \"version\": \"1.3.0\"\n    }\n  ],\n  \"metadata\": {\n    \"product_type\": \"addon\",\n    \"authors\": [\"yxvll9_\"]\n  }\n}"}, "Mesa de Construcao BP/loot_tables/empty.json": {"t": "text", "d": "{\"pools\": []}"}, "Mesa de Construcao BP/recipes/mesa_construcao.json": {"t": "text", "d": "{\n  \"format_version\": \"1.21.0\",\n  \"minecraft:recipe_shaped\": {\n    \"description\": {\n      \"identifier\": \"mesa:mesa_construcao\"\n    },\n    \"tags\": [\n      \"crafting_table\"\n    ],\n    \"pattern\": [\n      \"III\",\n      \"RCR\",\n      \"PPP\"\n    ],\n    \"key\": {\n      \"I\": {\n        \"item\": \"minecraft:iron_ingot\"\n      },\n      \"R\": {\n        \"item\": \"minecraft:redstone\"\n      },\n      \"C\": {\n        \"item\": \"minecraft:crafting_table\"\n      },\n      \"P\": {\n        \"item\": \"minecraft:oak_planks\"\n      }\n    },\n    \"result\": {\n      \"item\": \"mesa:mesa_construcao\"\n    }\n  }\n}"}, "Mesa de Construcao BP/scripts/main.js": {"t": "text", "d": "import { world, system, ItemStack, BlockPermutation } from \"@minecraft/server\";\nimport { ActionFormData, ModalFormData } from \"@minecraft/server-ui\";\nimport { BUILDS } from \"./builds.js\";\n\nconst VERSION = \"1.3.1\";\nconst TAG = `v${VERSION} TESTE`;\nconst TABLE_ID = \"mesa:mesa_construcao\";\n// partes da mesa 2x2 (deslocamento em relação ao bloco principal, que fica embaixo à esquerda)\nconst PARTS = {\n  \"mesa:mesa_p1\": { x: 1, y: 0 },\n  \"mesa:mesa_p2\": { x: 0, y: 1 },\n  \"mesa:mesa_p3\": { x: 1, y: 1 },\n};\nconst TABLE_CELLS = [\n  { x: 1, y: 0, id: \"mesa:mesa_p1\" },\n  { x: 0, y: 1, id: \"mesa:mesa_p2\" },\n  { x: 1, y: 1, id: \"mesa:mesa_p3\" },\n];\n\nconst INDEX_KEY = \"mesa:index\";\nconst OUTLINE_PARTICLE = \"minecraft:villager_happy\";\nconst OUTLINE_RANGE = 64;\nconst BATCH = 300; // blocos colocados/removidos por tick\nconst MAX_SHIFT = 96;\nconst OPACITY_LABEL = [\"40%\", \"50%\", \"60%\", \"70%\", \"80%\", \"90%\", \"100%\"];\nconst CHEST_WORDS = [\"chest\", \"barrel\", \"shulker_box\"];\n\n// Giro do holograma: yaw da entidade para cada rotação (0, 90, 180, 270 graus no sentido horário).\n// Se o holograma girar para o lado OPOSTO ao da construção, troque HOLO_SIGN para -1.\nconst HOLO_YAW = [180, 270, 0, 90];\nconst HOLO_SIGN = 1;\n\n// ---------- estado salvo no mundo ----------\nfunction getIndex() {\n  const raw = world.getDynamicProperty(INDEX_KEY);\n  if (typeof raw !== \"string\") return [];\n  try { return JSON.parse(raw); } catch { return []; }\n}\nfunction setIndex(list) { world.setDynamicProperty(INDEX_KEY, JSON.stringify(list)); }\nfunction keyOf(dimId, x, y, z) { return `mesa:${dimId}:${x},${y},${z}`; }\nfunction loadState(key) {\n  const raw = world.getDynamicProperty(key);\n  if (typeof raw !== \"string\") return undefined;\n  try {\n    const s = JSON.parse(raw);\n    s.rot ??= 0;\n    s.placed ??= {};\n    s.delivered ??= {};\n    s.who ??= {};\n    s.dx ??= 0; s.dy ??= 0; s.dz ??= 0;\n    s.step ??= 1;\n    s.hLayer ??= -1;\n    s.opacity ??= 2;\n    s.tint ??= false;\n    s.layerLimit ??= null;\n    return s;\n  } catch { return undefined; }\n}\nfunction saveState(key, state) {\n  world.setDynamicProperty(key, JSON.stringify(state));\n  const idx = getIndex();\n  if (!idx.includes(key)) { idx.push(key); setIndex(idx); }\n}\nfunction deleteState(key) {\n  world.setDynamicProperty(key, undefined);\n  setIndex(getIndex().filter((k) => k !== key));\n}\n// estado + construção + dimensão, ou undefined se o projeto sumiu\nfunction ctx(key) {\n  const s = loadState(key);\n  if (!s) return undefined;\n  const build = BUILDS[s.build];\n  if (!build) { deleteState(key); return undefined; }\n  let dim;\n  try { dim = world.getDimension(s.dim); } catch { return undefined; }\n  return { s, build, dim };\n}\n\n// ---------- geometria da construção ----------\n// Rotação de 90° no sentido horário (visto de cima), r vezes.\nfunction rotCell(x, z, r) {\n  switch (r) {\n    case 0: return [x, z];\n    case 1: return [-z, x];\n    case 2: return [-x, -z];\n    default: return [z, -x];\n  }\n}\n// main = estado do projeto (posição da mesa + deslocamento). Devolve onde fica a construção.\nfunction footprint(build, r, main) {\n  const W = build.size.x, D = build.size.z;\n  const odd = r % 2 === 1;\n  const zext = odd ? W : D;\n  const minOff = [{ x: 0, z: 0 }, { x: -(D - 1), z: 0 }, { x: -(W - 1), z: -(D - 1) }, { x: 0, z: -(W - 1) }][r];\n  const M = {\n    x: main.x + build.offsetX + (main.dx || 0),\n    y: main.y + (main.dy || 0),\n    z: main.z - Math.floor(zext / 2) + (main.dz || 0),\n  };\n  return { M, stand: { x: M.x - minOff.x, y: M.y, z: M.z - minOff.z }, w: odd ? D : W, d: zext };\n}\nfunction overlapsTable(fp, build, s) {\n  const x1 = fp.M.x, x2 = fp.M.x + fp.w - 1;\n  const y1 = fp.M.y, y2 = fp.M.y + build.size.y - 1;\n  const z1 = fp.M.z, z2 = fp.M.z + fp.d - 1;\n  return x1 <= s.x + 1 && x2 >= s.x && y1 <= s.y + 1 && y2 >= s.y && z1 <= s.z && z2 >= s.z;\n}\nfunction allBlocks(build) {\n  build._all ??= build.groups.flatMap((g) => g.blocks);\n  return build._all;\n}\nfunction baseColumns(build) {\n  if (!build._base) {\n    const seen = new Set(), out = [];\n    for (const b of allBlocks(build)) {\n      if (b[1] !== 0) continue;\n      const k = `${b[0]},${b[2]}`;\n      if (!seen.has(k)) { seen.add(k); out.push([b[0], b[2]]); }\n    }\n    build._base = out;\n  }\n  return build._base;\n}\n// quantos blocos do grupo ficam abaixo da camada lim (blocos ordenados por y)\nfunction capFor(blocks, lim) {\n  let lo = 0, hi = blocks.length;\n  while (lo < hi) {\n    const mid = (lo + hi) >> 1;\n    if (blocks[mid][1] < lim) lo = mid + 1; else hi = mid;\n  }\n  return lo;\n}\n\n// ---------- rotação de estados de bloco ----------\nconst CARD = { north: \"east\", east: \"south\", south: \"west\", west: \"north\" };\nconst FACING = { 2: 5, 5: 3, 3: 4, 4: 2 };\nconst WEIRDO = { 0: 2, 2: 1, 1: 3, 3: 0 };   // escadas e alçapões (0 leste, 1 oeste, 2 sul, 3 norte)\nconst DOORDIR = { 0: 1, 1: 2, 2: 3, 3: 0 };  // portas (0 leste, 1 sul, 2 oeste, 3 norte)\nconst LEVER = { east: \"south\", south: \"west\", west: \"north\", north: \"east\",\n  down_east_west: \"down_north_south\", down_north_south: \"down_east_west\",\n  up_east_west: \"up_north_south\", up_north_south: \"up_east_west\" };\nconst WALLCON = { east: \"north\", south: \"east\", west: \"south\", north: \"west\" }; // novo[lado] = antigo[WALLCON[lado]]\nfunction rotateStates(states, r, name) {\n  let o = { ...states };\n  for (let i = 0; i < r; i++) {\n    for (const k of [\"minecraft:cardinal_direction\", \"minecraft:facing_direction\", \"torch_facing_direction\"]) {\n      if (typeof o[k] === \"string\" && CARD[o[k]]) o[k] = CARD[o[k]];\n    }\n    if (typeof o.facing_direction === \"number\" && FACING[o.facing_direction] !== undefined) o.facing_direction = FACING[o.facing_direction];\n    if (typeof o.weirdo_direction === \"number\" && WEIRDO[o.weirdo_direction] !== undefined) o.weirdo_direction = WEIRDO[o.weirdo_direction];\n    if (typeof o.direction === \"number\") {\n      const isDoor = /_door$/.test(name || \"\");\n      const m = isDoor ? DOORDIR : WEIRDO;\n      if (m[o.direction] !== undefined) o.direction = m[o.direction];\n    }\n    if (typeof o.lever_direction === \"string\" && LEVER[o.lever_direction]) o.lever_direction = LEVER[o.lever_direction];\n    if (typeof o.pillar_axis === \"string\") {\n      if (o.pillar_axis === \"x\") o.pillar_axis = \"z\";\n      else if (o.pillar_axis === \"z\") o.pillar_axis = \"x\";\n    }\n    if (\"wall_connection_type_east\" in o) {\n      const n = { ...o };\n      for (const side of Object.keys(WALLCON)) n[`wall_connection_type_${side}`] = o[`wall_connection_type_${WALLCON[side]}`];\n      o = n;\n    }\n  }\n  return o;\n}\nconst ALIAS = { \"minecraft:grass_path\": \"minecraft:dirt_path\" };\nconst permCache = new Map();\nfunction permFor(build, pi, r) {\n  const k = `${build.id}:${pi}:${r}`;\n  let p = permCache.get(k);\n  if (p) return p;\n  const e = build.palette[pi];\n  for (const nm of [e.n, ALIAS[e.n]].filter(Boolean)) {\n    try { p = BlockPermutation.resolve(nm, rotateStates(e.s || {}, r, nm)); break; }\n    catch {\n      try { p = BlockPermutation.resolve(nm); break; } catch {}\n    }\n  }\n  if (!p) p = BlockPermutation.resolve(\"minecraft:air\");\n  permCache.set(k, p);\n  return p;\n}\n\n// ---------- utilidades ----------\nfunction isCreative(player) {\n  try {\n    return String(player.getGameMode()).toLowerCase() === \"creative\";\n  } catch {\n    try { return world.getPlayers({ gameMode: \"creative\", name: player.name }).length > 0; }\n    catch { return false; }\n  }\n}\nfunction findPlayer(name) {\n  for (const p of world.getPlayers()) if (p.name === name) return p;\n  return undefined;\n}\nfunction facingOf(player) {\n  const v = player.getViewDirection();\n  if (Math.abs(v.x) > Math.abs(v.z)) return { fx: Math.sign(v.x), fz: 0 };\n  return { fx: 0, fz: Math.sign(v.z) || 1 };\n}\nfunction takeFrom(container, typeId, amount) {\n  let taken = 0;\n  for (let i = 0; i < container.size && taken < amount; i++) {\n    const it = container.getItem(i);\n    if (!it || it.typeId !== typeId) continue;\n    const t = Math.min(it.amount, amount - taken);\n    if (t >= it.amount) container.setItem(i, undefined);\n    else { it.amount -= t; container.setItem(i, it); }\n    taken += t;\n  }\n  return taken;\n}\n// baús, barris e shulkers num raio de 2 blocos da mesa\nfunction nearbyContainers(dim, s) {\n  const out = [];\n  for (let x = s.x - 2; x <= s.x + 3; x++)\n    for (let y = s.y - 1; y <= s.y + 2; y++)\n      for (let z = s.z - 2; z <= s.z + 2; z++) {\n        try {\n          const b = dim.getBlock({ x, y, z });\n          if (!b || b.typeId === TABLE_ID || PARTS[b.typeId]) continue;\n          if (!CHEST_WORDS.some((w) => b.typeId.includes(w))) continue;\n          const inv = b.getComponent(\"minecraft:inventory\");\n          if (inv && inv.container) out.push(inv.container);\n        } catch {}\n      }\n  return out;\n}\n// baú ligado à mesa; sem ele, usa baús/barris/shulkers ao lado da mesa\nfunction chestSources(dim, s) {\n  if (s.chest) {\n    try {\n      const b = dim.getBlock(s.chest);\n      if (b && CHEST_WORDS.some((w) => b.typeId.includes(w))) {\n        const inv = b.getComponent(\"minecraft:inventory\");\n        if (inv && inv.container) return [inv.container];\n      }\n    } catch {}\n    return [];\n  }\n  return nearbyContainers(dim, s);\n}\nfunction chestLinkOk(dim, s) {\n  if (!s.chest) return false;\n  try {\n    const b = dim.getBlock(s.chest);\n    return !!b && CHEST_WORDS.some((w) => b.typeId.includes(w));\n  } catch { return false; }\n}\n// puxa o que falta do inventário do jogador (se informado) e do(s) baú(s)\nfunction collectMaterials(player, c) {\n  const { s, build, dim } = c;\n  const mine = player ? player.getComponent(\"inventory\").container : undefined;\n  const chests = chestSources(dim, s);\n  let total = 0, fromChests = 0;\n  for (const g of build.groups) {\n    if (g.free) continue;\n    const have = s.delivered[g.id] || 0;\n    const need = g.count - have;\n    if (need <= 0) continue;\n    let got = mine ? takeFrom(mine, g.item, need) : 0;\n    let left = need - got;\n    for (const ch of chests) {\n      if (left <= 0) break;\n      const t = takeFrom(ch, g.item, left);\n      got += t; left -= t; fromChests += t;\n    }\n    if (got > 0) { s.delivered[g.id] = have + got; total += got; }\n  }\n  return { total, fromChests };\n}\nfunction placedItems(g, s) { return Math.ceil((s.placed[g.id] || 0) / g.bpi); }\nfunction totalPlaced(build, s) {\n  let n = 0;\n  for (const g of build.groups) n += s.placed[g.id] || 0;\n  return n;\n}\nfunction stacks(n) {\n  const st = Math.floor(n / 64), r = n % 64;\n  if (st === 0) return `${r}`;\n  return `${st} stack${st > 1 ? \"s\" : \"\"}${r ? ` + ${r}` : \"\"}`;\n}\nfunction progress(build, s) {\n  let done = true;\n  const lines = [];\n  for (const g of build.groups) {\n    if (g.free) continue;\n    const have = Math.min(s.delivered[g.id] || 0, g.count);\n    const ok = have >= g.count;\n    if (!ok) done = false;\n    const put = s.placed[g.id] || 0;\n    const falta = ok ? \"\" : ` §c(faltam ${stacks(g.count - have)})§r`;\n    lines.push(`${ok ? \"§a\" : \"§e\"}${g.label}: ${have}/${g.count}§r${falta}${put > 0 ? ` §7[${put} no mundo]§r` : \"\"}`);\n  }\n  return { lines, done };\n}\nfunction refundItems(dim, s, items) {\n  const pos = { x: s.x + 0.5, y: s.y + 2, z: s.z + 0.5 };\n  for (const [id, n] of Object.entries(items)) {\n    let left = n;\n    while (left > 0) {\n      const q = Math.min(left, 64);\n      try { dim.spawnItem(new ItemStack(id, q), pos); } catch {}\n      left -= q;\n    }\n  }\n}\n// o que foi entregue e ainda não virou bloco\nfunction unusedItems(build, s) {\n  const out = {};\n  for (const g of build.groups) {\n    if (g.free) continue;\n    const left = (s.delivered[g.id] || 0) - placedItems(g, s);\n    if (left > 0) out[g.item] = (out[g.item] || 0) + left;\n  }\n  return out;\n}\n\n// ---------- holograma (entidade própria por construção) ----------\nfunction holoPoint(build, s) {\n  const fp = footprint(build, s.rot, s);\n  return { x: fp.stand.x + 0.5, y: fp.stand.y, z: fp.stand.z + 0.5 };\n}\nfunction yawFor(r) {\n  const rr = HOLO_SIGN === 1 ? r : (4 - r) % 4;\n  return HOLO_YAW[rr];\n}\nfunction findHolo(dim, build, at) {\n  try { return dim.getEntities({ type: build.entityId, location: at, maxDistance: 2 }); }\n  catch { return []; }\n}\nfunction applyHoloProps(e, s) {\n  try { e.setProperty(\"mesa:layer\", (s.hLayer ?? -1) + 1); } catch {}\n  try { e.setProperty(\"mesa:opacity\", s.opacity ?? 2); } catch {}\n  try { e.setProperty(\"mesa:tint\", !!s.tint); } catch {}\n}\nfunction spawnHolo(dim, build, s) {\n  const at = holoPoint(build, s);\n  if (findHolo(dim, build, at).length > 0) return;\n  const yaw = yawFor(s.rot);\n  try {\n    const e = dim.spawnEntity(build.entityId, at);\n    try { e.teleport(at, { rotation: { x: 0, y: yaw } }); } catch {}\n    try { e.setRotation({ x: 0, y: yaw }); } catch {}\n    applyHoloProps(e, s);\n  } catch { /* área não carregada: tenta de novo no próximo ciclo */ }\n}\nfunction removeHolo(dim, build, s) {\n  for (const e of findHolo(dim, build, holoPoint(build, s))) {\n    try { e.remove(); } catch { try { e.kill(); } catch {} }\n  }\n}\nfunction refreshHoloProps(dim, build, s) {\n  for (const e of findHolo(dim, build, holoPoint(build, s))) applyHoloProps(e, s);\n}\n\n// ---------- a mesa 2x2 ----------\nfunction mainOf(block) {\n  if (block.typeId === TABLE_ID) return block;\n  const off = PARTS[block.typeId];\n  if (!off) return undefined;\n  try { return block.dimension.getBlock({ x: block.x - off.x, y: block.y - off.y, z: block.z }); }\n  catch { return undefined; }\n}\n\nworld.afterEvents.playerPlaceBlock.subscribe((ev) => {\n  const b = ev.block;\n  if (b.typeId !== TABLE_ID) return;\n  const dim = b.dimension;\n  const cells = TABLE_CELLS.map((c) => {\n    try { return dim.getBlock({ x: b.x + c.x, y: b.y + c.y, z: b.z }); } catch { return undefined; }\n  });\n  if (cells.some((c) => !c || !c.isAir)) {\n    b.setType(\"minecraft:air\");\n    if (!isCreative(ev.player)) {\n      try { ev.player.getComponent(\"inventory\").container.addItem(new ItemStack(TABLE_ID, 1)); } catch {}\n    }\n    ev.player.sendMessage(\"§cA mesa precisa de 2 blocos de largura e 2 de altura livres (para a direita e para cima).\");\n    return;\n  }\n  TABLE_CELLS.forEach((c, i) => cells[i].setPermutation(BlockPermutation.resolve(c.id)));\n});\n\nworld.afterEvents.playerBreakBlock.subscribe((ev) => {\n  const id = ev.brokenBlockPermutation.type.id;\n  if (id !== TABLE_ID && !PARTS[id]) return;\n  const off = PARTS[id] ?? { x: 0, y: 0 };\n  const mx = ev.block.x - off.x, my = ev.block.y - off.y, mz = ev.block.z;\n  const dim = ev.block.dimension;\n  let mainExisted = id === TABLE_ID;\n  if (!mainExisted) {\n    try { mainExisted = dim.getBlock({ x: mx, y: my, z: mz })?.typeId === TABLE_ID; } catch {}\n  }\n  for (const c of [{ x: 0, y: 0 }, ...TABLE_CELLS]) {\n    try {\n      const blk = dim.getBlock({ x: mx + c.x, y: my + c.y, z: mz });\n      if (blk && (blk.typeId === TABLE_ID || PARTS[blk.typeId])) blk.setType(\"minecraft:air\");\n    } catch {}\n  }\n  // quebrou uma parte: solta a mesa inteira (o bloco principal solta sozinho)\n  if (id !== TABLE_ID && mainExisted && !isCreative(ev.player)) {\n    try { dim.spawnItem(new ItemStack(TABLE_ID, 1), { x: mx + 0.5, y: my + 0.5, z: mz + 0.5 }); } catch {}\n  }\n});\n\n// ---------- controle do holograma com itens ----------\n// Funciona perto de qualquer projeto: clicando no ar, no chão, no próprio holograma ou na mesa.\n//   graveto: move 1 passo para onde você olha (olhando para cima/baixo: sobe/desce) • agachado: sentido contrário\n//   tijolo: próxima camada (agachado: anterior) • ametista: mais opaco (agachado: menos opaco)\n//   tinta branca: liga/desliga a tinta azul • couro: gira +90° (agachado: -90°) • pena: o contrário do couro\n//   sílex: verifica o terreno • papel: abre o painel\nconst QUICK_ITEMS = new Set([\n  \"minecraft:stick\", \"minecraft:brick\", \"minecraft:amethyst_shard\", \"minecraft:white_dye\",\n  \"minecraft:leather\", \"minecraft:feather\", \"minecraft:flint\", \"minecraft:paper\",\n]);\nconst QUICK_RANGE = 100;\nconst lastQuick = new Map();\n\nfunction say(player, msg) {\n  try { player.onScreenDisplay.setActionBar(msg); } catch { player.sendMessage(msg); }\n}\n// o mesmo clique pode gerar mais de um evento (ar, bloco, entidade): só o primeiro age\nfunction claimQuick(player) {\n  const last = lastQuick.get(player.name);\n  if (last !== undefined && system.currentTick - last < 4) return false;\n  lastQuick.set(player.name, system.currentTick);\n  return true;\n}\nfunction nearestProjectKey(dimId, at) {\n  let best, bd = Infinity;\n  for (const key of getIndex()) {\n    const s = loadState(key);\n    if (!s || s.dim !== dimId) continue;\n    const build = BUILDS[s.build];\n    if (!build) continue;\n    const fp = footprint(build, s.rot, s);\n    const dx = Math.max(fp.M.x - at.x, 0, at.x - (fp.M.x + fp.w));\n    const dz = Math.max(fp.M.z - at.z, 0, at.z - (fp.M.z + fp.d));\n    const d = Math.min(Math.hypot(dx, dz), Math.hypot(s.x - at.x, s.z - at.z));\n    if (d < bd && d <= QUICK_RANGE) { bd = d; best = key; }\n  }\n  return best;\n}\n\nfunction stepLayer(player, key, delta) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build, dim } = c;\n  const H = build.size.y;\n  let v = s.hLayer;\n  if (v < 0) v = delta > 0 ? 0 : H - 1;\n  else v += delta;\n  if (v < 0 || v > H - 1) v = -1;\n  s.hLayer = v;\n  saveState(key, s);\n  refreshHoloProps(dim, build, s);\n  say(player, v < 0 ? \"§aHolograma: todas as camadas\" : `§aCamada ${v + 1}/${H}`);\n}\nfunction stepOpacity(player, key, delta) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build, dim } = c;\n  s.opacity = Math.max(0, Math.min(6, s.opacity + delta));\n  saveState(key, s);\n  refreshHoloProps(dim, build, s);\n  say(player, `§aOpacidade: ${OPACITY_LABEL[s.opacity]}`);\n}\n\nfunction quick(player, key, itemId) {\n  const c = ctx(key);\n  if (!c) return;\n  const sneak = player.isSneaking;\n  switch (itemId) {\n    case \"minecraft:stick\": {\n      const v = player.getViewDirection();\n      const n = (c.s.step || 1) * (sneak ? -1 : 1);\n      if (v.y > 0.8) moveProject(player, key, 0, n, 0, true);\n      else if (v.y < -0.8) moveProject(player, key, 0, -n, 0, true);\n      else { const f = facingOf(player); moveProject(player, key, f.fx * n, 0, f.fz * n, true); }\n      break;\n    }\n    case \"minecraft:brick\": stepLayer(player, key, sneak ? -1 : 1); break;\n    case \"minecraft:amethyst_shard\": stepOpacity(player, key, sneak ? -1 : 1); break;\n    case \"minecraft:white_dye\": toggleTint(player, key, true); break;\n    case \"minecraft:leather\": rotateProject(player, key, sneak ? -1 : 1, true); break;\n    case \"minecraft:feather\": rotateProject(player, key, sneak ? 1 : -1, true); break;\n    case \"minecraft:flint\": startJob(player, key, { kind: \"scan\", stage: \"blocks\", i: 0, replaced: 0, unloaded: 0, holes: 0 }); break;\n    case \"minecraft:paper\": openProject(player, key); break;\n  }\n}\n\n// clique no ar com o item\nworld.beforeEvents.itemUse.subscribe((ev) => {\n  const player = ev.source;\n  const id = ev.itemStack ? ev.itemStack.typeId : undefined;\n  if (!id || !QUICK_ITEMS.has(id)) return;\n  const key = nearestProjectKey(player.dimension.id, player.location);\n  if (!key) return;\n  ev.cancel = true;\n  if (!claimQuick(player)) return;\n  system.run(() => quick(player, key, id));\n});\n\n// clique no próprio holograma (entidade)\nif (world.beforeEvents.playerInteractWithEntity) {\n  world.beforeEvents.playerInteractWithEntity.subscribe((ev) => {\n    const t = ev.target;\n    if (!t || !String(t.typeId).startsWith(\"mesa:holo_\")) return;\n    ev.cancel = true;\n    const id = ev.itemStack ? ev.itemStack.typeId : undefined;\n    if (!id || !QUICK_ITEMS.has(id)) return;\n    const key = nearestProjectKey(t.dimension.id, t.location);\n    if (!key) return;\n    const player = ev.player;\n    if (!claimQuick(player)) return;\n    system.run(() => quick(player, key, id));\n  });\n}\n\nworld.beforeEvents.playerInteractWithBlock.subscribe((ev) => {\n  const pend = linking.get(ev.player.name);\n  if (pend) {\n    if (system.currentTick > pend.until) linking.delete(ev.player.name);\n    else if (ev.isFirstEvent && CHEST_WORDS.some((w) => ev.block.typeId.includes(w))) {\n      ev.cancel = true;\n      const player = ev.player;\n      const loc = { x: ev.block.x, y: ev.block.y, z: ev.block.z };\n      const dimId = ev.block.dimension.id;\n      system.run(() => completeLink(player, pend, loc, dimId));\n      return;\n    }\n  }\n  const t = ev.block.typeId;\n  const itemId = ev.itemStack ? ev.itemStack.typeId : undefined;\n  const quickItem = !!itemId && QUICK_ITEMS.has(itemId);\n\n  // clique em qualquer outro bloco (chão, parede...) com um item de controle perto de um projeto\n  if (t !== TABLE_ID && !PARTS[t]) {\n    if (!quickItem) return;\n    const key = nearestProjectKey(ev.block.dimension.id, { x: ev.block.x, z: ev.block.z });\n    if (!key) return;\n    ev.cancel = true;\n    const player = ev.player;\n    if (!claimQuick(player)) return;\n    system.run(() => quick(player, key, itemId));\n    return;\n  }\n\n  if (!ev.isFirstEvent) return;\n  if (ev.player.isSneaking && !quickItem) return; // agachado: permite colocar blocos na mesa\n  ev.cancel = true;\n  const player = ev.player;\n  const clicked = ev.block;\n  if (quickItem && !claimQuick(player)) return;\n  system.run(() => {\n    const main = mainOf(clicked);\n    if (!main || main.typeId !== TABLE_ID) return;\n    const key = keyOf(main.dimension.id, main.x, main.y, main.z);\n    const pos = { dim: main.dimension.id, x: main.x, y: main.y, z: main.z };\n    const state = loadState(key);\n    if (state && BUILDS[state.build]) {\n      if (quickItem) quick(player, key, itemId);\n      else openProject(player, key);\n    } else openMenu(player, key, pos);\n  });\n});\n\n// ---------- painéis ----------\nfunction openMenu(player, key, pos) {\n  const ids = Object.keys(BUILDS);\n  const form = new ActionFormData().title(`Mesa de Construção ${TAG}`).body(\"Escolha o que você quer construir:\");\n  for (const id of ids) {\n    const b = BUILDS[id];\n    form.button(`${b.name}\\n${b.size.x}x${b.size.y}x${b.size.z} • ${b.total} blocos`);\n  }\n  form.show(player).then((res) => {\n    if (res.canceled) return;\n    const id = ids[res.selection];\n    const novo = {\n      build: id, rot: 0, delivered: {}, placed: {}, who: {}, holo: true, outline: false,\n      dx: 0, dy: 0, dz: 0, step: 1, hLayer: -1, opacity: 2, tint: false, layerLimit: null, ...pos,\n    };\n    saveState(key, novo);\n    spawnHolo(world.getDimension(novo.dim), BUILDS[id], novo);\n    openProject(player, key);\n  });\n}\n\nfunction openProject(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  const { lines, done } = progress(build, s);\n  const creative = isCreative(player);\n  const placed = totalPlaced(build, s);\n  const lim = s.layerLimit ?? build.size.y;\n  const quem = Object.entries(s.who).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n, v]) => `${n} ${v}`).join(\" • \");\n\n  const body =\n    `§l${build.name}§r  §7(${build.size.x}x${build.size.y}x${build.size.z})§r\\n` +\n    `Rotação ${s.rot * 90}° • Altura até a camada ${lim}/${build.size.y} • No mundo: ${placed}/${build.total}\\n` +\n    (quem ? `Entregas: ${quem}\\n` : \"\") +\n    `\\n` + lines.join(\"\\n\") +\n    `\\n\\n` + (s.chest\n      ? (chestLinkOk(c.dim, s)\n        ? `§bBaú ligado em ${s.chest.x} ${s.chest.y} ${s.chest.z}: o que estiver nele é usado ao apertar Construir.§r`\n        : `§cO baú ligado (${s.chest.x} ${s.chest.y} ${s.chest.z}) não foi encontrado.§r`)\n      : \"§7Dica: ligue um baú à mesa. Sem baú ligado, baús ao lado da mesa também são usados.§r\") +\n    (creative ? \"\\n§7(Criativo: dá para construir sem materiais.)§r\" : \"\");\n\n  new ActionFormData()\n    .title(`Mesa de Construção ${TAG}`)\n    .body(body)\n    .button(\"Entregar materiais\")\n    .button(done || creative ? \"§aConstruir agora§r\" : \"Construir agora (com o que já entreguei)\")\n    .button(s.chest ? \"Baú ligado ›\" : \"Ligar um baú ›\")\n    .button(\"Ajustes da construção ›\")\n    .button(\"Holograma ›\")\n    .button(\"Mais opções ›\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      switch (res.selection) {\n        case 0: deliver(player, key); break;\n        case 1: startBuild(player, key); break;\n        case 2: openChest(player, key); break;\n        case 3: openAdjust(player, key); break;\n        case 4: openHolo(player, key); break;\n        case 5: openMore(player, key); break;\n      }\n    });\n}\n\nfunction openAdjust(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  const lim = s.layerLimit ?? build.size.y;\n  new ActionFormData()\n    .title(\"Ajustes da construção\")\n    .body(`Rotação ${s.rot * 90}° • Deslocamento X${s.dx} Y${s.dy} Z${s.dz}\\nGirar e mover só funcionam antes de colocar o primeiro bloco.`)\n    .button(`Girar (+90°) — ${s.rot * 90}°`)\n    .button(\"Mover construção\")\n    .button(`Limite de altura: ${lim}/${build.size.y}`)\n    .button(\"Verificar terreno\")\n    .button(\"Nivelar terreno\")\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      switch (res.selection) {\n        case 0: rotateProject(player, key, 1); break;\n        case 1: openMove(player, key); break;\n        case 2: openLimit(player, key); break;\n        case 3: startJob(player, key, { kind: \"scan\", stage: \"blocks\", i: 0, replaced: 0, unloaded: 0, holes: 0 }); break;\n        case 4: confirmLevel(player, key); break;\n        default: openProject(player, key);\n      }\n    });\n}\n\nfunction openHolo(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s } = c;\n  new ActionFormData()\n    .title(\"Holograma\")\n    .body(\"Controle com itens (funciona perto da construção, clicando no ar, no chão ou no holograma):\\n\" +\n      \"graveto = mover para onde você olha • tijolo = próxima camada • ametista = mais opaco\\n\" +\n      \"couro = girar • pena = girar para o outro lado • tinta branca = tinta azul\\n\" +\n      \"sílex = verificar terreno • papel = abrir este painel\\n\" +\n      \"AGACHADO inverte: graveto para trás, tijolo volta a camada, ametista menos opaco, couro e pena giram ao contrário.\")\n    .button(s.holo !== false ? \"Holograma: ligado\" : \"Holograma: desligado\")\n    .button(\"Camada por camada\")\n    .button(\"Opacidade e cor\")\n    .button(s.outline ? \"Contorno: ligado\" : \"Contorno: desligado\")\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      switch (res.selection) {\n        case 0: {\n          const cc = ctx(key);\n          if (cc) {\n            cc.s.holo = cc.s.holo === false;\n            saveState(key, cc.s);\n            if (cc.s.holo) spawnHolo(cc.dim, cc.build, cc.s); else removeHolo(cc.dim, cc.build, cc.s);\n          }\n          openHolo(player, key);\n          break;\n        }\n        case 1: openLayers(player, key); break;\n        case 2: openOpacity(player, key); break;\n        case 3: {\n          const cc = ctx(key);\n          if (cc) { cc.s.outline = !cc.s.outline; saveState(key, cc.s); }\n          openHolo(player, key);\n          break;\n        }\n        default: openProject(player, key);\n      }\n    });\n}\n\nfunction openMore(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  new ActionFormData()\n    .title(\"Mais opções\")\n    .body(\"Desfazer remove os blocos que a mesa colocou (o terreno original não volta). Os materiais continuam entregues na mesa.\")\n    .button(\"Desfazer construção\")\n    .button(\"Trocar de construção\")\n    .button(\"Cancelar projeto (devolver materiais)\")\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      switch (res.selection) {\n        case 0: confirmUndo(player, key); break;\n        case 1: switchBuild(player, key); break;\n        case 2: cancelProject(player, key); break;\n        default: openProject(player, key);\n      }\n    });\n}\n\nfunction openMove(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  if (totalPlaced(build, s) > 0) {\n    player.sendMessage(\"§eJá existem blocos colocados, então não dá mais para mover. Desfaça a construção primeiro.\");\n    return;\n  }\n  const f = facingOf(player);\n  const step = s.step || 1;\n  new ActionFormData()\n    .title(\"Mover construção\")\n    .body(`Deslocamento atual: X${s.dx} Y${s.dy} Z${s.dz}\\nPasso: ${step} bloco(s). As direções seguem para onde você está olhando.`)\n    .button(\"Frente\")\n    .button(\"Trás\")\n    .button(\"Esquerda\")\n    .button(\"Direita\")\n    .button(\"Cima\")\n    .button(\"Baixo\")\n    .button(`Passo: ${step} (trocar)`)\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      const n = step;\n      switch (res.selection) {\n        case 0: moveProject(player, key, f.fx * n, 0, f.fz * n); break;\n        case 1: moveProject(player, key, -f.fx * n, 0, -f.fz * n); break;\n        case 2: moveProject(player, key, f.fz * n, 0, -f.fx * n); break;\n        case 3: moveProject(player, key, -f.fz * n, 0, f.fx * n); break;\n        case 4: moveProject(player, key, 0, n, 0); break;\n        case 5: moveProject(player, key, 0, -n, 0); break;\n        case 6: {\n          const cc = ctx(key);\n          if (cc) { cc.s.step = cc.s.step === 1 ? 5 : cc.s.step === 5 ? 10 : 1; saveState(key, cc.s); }\n          openMove(player, key);\n          break;\n        }\n        default: openAdjust(player, key);\n      }\n    });\n}\n\nfunction openLayers(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  const H = build.size.y;\n  const fp = footprint(build, s.rot, s);\n  const cur = s.hLayer;\n  const body = cur < 0 ? \"Mostrando todas as camadas.\" : `Camada ${cur + 1}/${H} (altura Y ${fp.M.y + cur}).`;\n  new ActionFormData()\n    .title(\"Camada por camada\")\n    .body(body)\n    .button(\"Mostrar tudo\")\n    .button(\"‹ Camada anterior\")\n    .button(\"Próxima camada ›\")\n    .button(\"−10 camadas\")\n    .button(\"+10 camadas\")\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      const set = (v) => {\n        const cc = ctx(key);\n        if (!cc) return;\n        cc.s.hLayer = Math.max(-1, Math.min(cc.build.size.y - 1, v));\n        saveState(key, cc.s);\n        refreshHoloProps(cc.dim, cc.build, cc.s);\n        openLayers(player, key);\n      };\n      switch (res.selection) {\n        case 0: set(-1); break;\n        case 1: set(cur < 0 ? H - 1 : cur - 1); break;\n        case 2: set(cur < 0 ? 0 : cur + 1); break;\n        case 3: set(cur < 0 ? H - 1 : cur - 10); break;\n        case 4: set(cur < 0 ? 9 : cur + 10); break;\n        default: openHolo(player, key);\n      }\n    });\n}\n\nfunction openOpacity(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s } = c;\n  new ActionFormData()\n    .title(\"Opacidade e cor\")\n    .body(`Opacidade: ${OPACITY_LABEL[s.opacity]} • Tinta azul: ${s.tint ? \"ligada\" : \"desligada\"}`)\n    .button(\"Menos opaco\")\n    .button(\"Mais opaco\")\n    .button(s.tint ? \"Tinta azul: desligar\" : \"Tinta azul: ligar\")\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      const cc = ctx(key);\n      if (!cc) return;\n      switch (res.selection) {\n        case 0: cc.s.opacity = Math.max(0, cc.s.opacity - 1); break;\n        case 1: cc.s.opacity = Math.min(6, cc.s.opacity + 1); break;\n        case 2: cc.s.tint = !cc.s.tint; break;\n        default: openHolo(player, key); return;\n      }\n      saveState(key, cc.s);\n      refreshHoloProps(cc.dim, cc.build, cc.s);\n      openOpacity(player, key);\n    });\n}\n\nfunction openLimit(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  const H = build.size.y;\n  const def = Math.max(1, Math.min(H, s.layerLimit ?? H));\n  const form = new ModalFormData().title(\"Altura da construção\");\n  const label = `Construir até a camada (1 a ${H})`;\n  try { form.slider(label, 1, H, 1, def); }\n  catch { form.slider(label, 1, H, { valueStep: 1, defaultValue: def }); }\n  form.show(player).then((res) => {\n    if (res.canceled) return;\n    const cc = ctx(key);\n    if (!cc) return;\n    const v = Math.round(Number(res.formValues[0]));\n    cc.s.layerLimit = v >= H ? null : Math.max(1, v);\n    saveState(key, cc.s);\n    player.sendMessage(`§aVai construir até a camada ${cc.s.layerLimit ?? H} de ${H}.`);\n    openAdjust(player, key);\n  });\n}\n\nfunction confirmUndo(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  if (totalPlaced(c.build, c.s) === 0) {\n    player.sendMessage(\"§eNão há blocos colocados para desfazer.\");\n    openMore(player, key);\n    return;\n  }\n  new ActionFormData()\n    .title(\"Desfazer construção\")\n    .body(\"Isso remove todos os blocos que a mesa colocou (viram ar) e não restaura o terreno de antes. Continuar?\")\n    .button(\"§cSim, desfazer§r\")\n    .button(\"Não\")\n    .show(player).then((res) => {\n      if (res.canceled || res.selection !== 0) { openMore(player, key); return; }\n      startJob(player, key, { kind: \"undo\", blocked: 0 });\n    });\n}\n\nfunction confirmLevel(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  const fp = footprint(build, s.rot, s);\n  if (overlapsTable(fp, build, s)) {\n    player.sendMessage(\"§cA área da construção encosta na mesa. Mova a construção antes de nivelar.\");\n    return;\n  }\n  if (totalPlaced(build, s) > 0) {\n    player.sendMessage(\"§eJá existem blocos colocados. Desfaça a construção antes de nivelar.\");\n    return;\n  }\n  new ActionFormData()\n    .title(\"Nivelar terreno\")\n    .body(`Isso APAGA tudo dentro da área da construção (${fp.w}x${build.size.y}x${fp.d} blocos) e preenche os buracos abaixo dela com terra. Continuar?`)\n    .button(\"§cSim, nivelar§r\")\n    .button(\"Não\")\n    .show(player).then((res) => {\n      if (res.canceled || res.selection !== 0) { openAdjust(player, key); return; }\n      startJob(player, key, { kind: \"level\", stage: \"clear\", y: 0, i: 0, blocked: 0 });\n    });\n}\n\n// ---------- ações ----------\nfunction deliver(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, dim } = c;\n  const { total, fromChests } = collectMaterials(player, c);\n  if (total > 0) s.who[player.name] = (s.who[player.name] || 0) + total;\n  saveState(key, s);\n  if (total > 0) {\n    player.sendMessage(`§aEntregues ${total} itens${fromChests > 0 ? ` (${fromChests} vieram do baú)` : \"\"}. Use \"Construir agora\" para colocar os blocos.`);\n    try {\n      for (const p of dim.getPlayers({ location: { x: s.x, y: s.y, z: s.z }, maxDistance: 32 })) {\n        if (p.name !== player.name) p.sendMessage(`§7${player.name} entregou ${total} itens na mesa.`);\n      }\n    } catch {}\n  } else {\n    player.sendMessage(s.chest\n      ? \"§eNão encontrei nenhum dos materiais que faltam (nem no seu inventário, nem no baú ligado).\"\n      : \"§eNão encontrei nenhum dos materiais que faltam (nem no seu inventário, nem em baús ao lado da mesa).\");\n  }\n  openProject(player, key);\n}\n\n// ---------- baú ligado à mesa ----------\nconst linking = new Map(); // nome do jogador -> { key, until }\n\nfunction startLinking(player, key) {\n  linking.set(player.name, { key, until: system.currentTick + 1200 });\n  player.sendMessage(\"§bClique com o botão direito no baú (ou barril/shulker) que você quer ligar à mesa. Vale por 1 minuto.\");\n}\n\nfunction completeLink(player, pend, loc, dimId) {\n  linking.delete(player.name);\n  const c = ctx(pend.key);\n  if (!c) return;\n  const { s } = c;\n  if (dimId !== s.dim || Math.max(Math.abs(loc.x - s.x), Math.abs(loc.y - s.y), Math.abs(loc.z - s.z)) > 24) {\n    player.sendMessage(\"§cEsse baú está longe demais da mesa (máximo 24 blocos) ou em outra dimensão.\");\n    return;\n  }\n  s.chest = loc;\n  saveState(pend.key, s);\n  player.sendMessage(`§aBaú ligado em ${loc.x} ${loc.y} ${loc.z}. Ao apertar \"Construir agora\", o que estiver nele vai para a construção.`);\n  openProject(player, pend.key);\n}\n\nfunction openChest(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  if (!c.s.chest) { startLinking(player, key); return; }\n  const ok = chestLinkOk(c.dim, c.s);\n  new ActionFormData()\n    .title(\"Baú ligado\")\n    .body(`Baú em ${c.s.chest.x} ${c.s.chest.y} ${c.s.chest.z}${ok ? \"\" : \" §c(não encontrei um baú nesse lugar)§r\"}.\\nAo apertar \"Construir agora\", os materiais que estiverem nele são usados.`)\n    .button(\"Ligar outro baú\")\n    .button(\"Desligar baú\")\n    .button(\"‹ Voltar\")\n    .show(player).then((res) => {\n      if (res.canceled) return;\n      switch (res.selection) {\n        case 0: startLinking(player, key); break;\n        case 1: {\n          const cc = ctx(key);\n          if (cc) { delete cc.s.chest; saveState(key, cc.s); player.sendMessage(\"§eBaú desligado. A mesa volta a usar baús ao lado dela.\"); }\n          openProject(player, key);\n          break;\n        }\n        default: openProject(player, key);\n      }\n    });\n}\n\nfunction rotateProject(player, key, dir, quiet = false) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build, dim } = c;\n  const out = (m) => (quiet ? say(player, m) : player.sendMessage(m));\n  if (totalPlaced(build, s) > 0) {\n    out(\"§eJá existem blocos colocados, então não dá mais para girar. Desfaça a construção primeiro.\");\n    return;\n  }\n  const old = { ...s };\n  s.rot = (s.rot + dir + 4) % 4;\n  const fp = footprint(build, s.rot, s);\n  if (overlapsTable(fp, build, s)) {\n    out(\"§cGirando, a construção encostaria na mesa. Mova a construção para longe dela primeiro.\");\n    return;\n  }\n  removeHolo(dim, build, old);\n  saveState(key, s);\n  if (s.holo !== false) spawnHolo(dim, build, s);\n  out(`§aRotação: ${s.rot * 90}°`);\n  if (!quiet) openAdjust(player, key);\n}\n\nfunction moveProject(player, key, dx, dy, dz, quiet = false) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build, dim } = c;\n  const out = (m) => (quiet ? say(player, m) : player.sendMessage(m));\n  const again = () => { if (!quiet) openMove(player, key); };\n  const old = { ...s };\n  const nx = s.dx + dx, ny = s.dy + dy, nz = s.dz + dz;\n  const top = s.y + ny + build.size.y;\n  if (totalPlaced(build, s) > 0) {\n    out(\"§eJá existem blocos colocados, então não dá mais para mover. Desfaça a construção primeiro.\");\n    return;\n  }\n  if (Math.abs(nx) > MAX_SHIFT || Math.abs(nz) > MAX_SHIFT || Math.abs(ny) > 64 || s.y + ny < -64 || top > 320) {\n    out(\"§eEssa posição passa do limite permitido.\");\n    again();\n    return;\n  }\n  s.dx = nx; s.dy = ny; s.dz = nz;\n  if (overlapsTable(footprint(build, s.rot, s), build, s)) {\n    out(\"§cA construção encostaria na mesa nessa posição.\");\n    again();\n    return;\n  }\n  removeHolo(dim, build, old);\n  saveState(key, s);\n  if (s.holo !== false) spawnHolo(dim, build, s);\n  if (quiet) say(player, `§aPosição: X${s.dx} Y${s.dy} Z${s.dz}`);\n  again();\n}\n\nfunction toggleTint(player, key, quiet = false) {\n  const c = ctx(key);\n  if (!c) return;\n  c.s.tint = !c.s.tint;\n  saveState(key, c.s);\n  refreshHoloProps(c.dim, c.build, c.s);\n  const m = `§aTinta azul ${c.s.tint ? \"ligada\" : \"desligada\"}.`;\n  if (quiet) say(player, m); else player.sendMessage(m);\n}\n\nfunction switchBuild(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build, dim } = c;\n  if (totalPlaced(build, s) > 0) {\n    player.sendMessage(\"§eJá existem blocos colocados. Desfaça a construção antes de trocar.\");\n    return;\n  }\n  removeHolo(dim, build, s);\n  refundItems(dim, s, unusedItems(build, s));\n  const pos = { dim: s.dim, x: s.x, y: s.y, z: s.z };\n  deleteState(key);\n  player.sendMessage(\"§eMateriais entregues foram devolvidos. Escolha a nova construção.\");\n  openMenu(player, key, pos);\n}\n\nfunction cancelProject(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build, dim } = c;\n  removeHolo(dim, build, s);\n  refundItems(dim, s, unusedItems(build, s));\n  jobs.delete(key);\n  deleteState(key);\n  player.sendMessage(totalPlaced(build, s) > 0\n    ? \"§eProjeto cancelado. Os materiais que ainda não viraram blocos foram devolvidos (os blocos já colocados ficam no mundo).\"\n    : \"§eProjeto cancelado. Os materiais entregues foram devolvidos.\");\n}\n\n// ---------- tarefas em lotes (construir, desfazer, nivelar, verificar) ----------\nconst jobs = new Map(); // key -> { kind, player, ... }\n\nfunction startJob(player, key, job) {\n  if (!ctx(key)) return;\n  if (jobs.has(key)) { player.sendMessage(\"§eA mesa ainda está trabalhando. Aguarde terminar.\"); return; }\n  jobs.set(key, { player: player.name, blocked: 0, ...job });\n  const msg = { build: \"Construindo\", undo: \"Desfazendo\", level: \"Nivelando o terreno\", scan: \"Verificando o terreno\" }[job.kind];\n  player.sendMessage(`§a${msg}... fique perto da área até terminar.`);\n}\n\nfunction startBuild(player, key) {\n  const c = ctx(key);\n  if (!c) return;\n  const { s, build } = c;\n  const creative = isCreative(player);\n  const pulled = collectMaterials(null, c);\n  if (pulled.total > 0) {\n    s.who[player.name] = (s.who[player.name] || 0) + pulled.total;\n    saveState(key, s);\n    player.sendMessage(`§a${pulled.total} itens saíram do baú para a construção.`);\n  }\n  if (creative) {\n    for (const g of build.groups) if (!g.free) s.delivered[g.id] = g.count;\n    saveState(key, s);\n  } else if (build.groups.every((g) => g.free || (s.delivered[g.id] || 0) === 0)) {\n    player.sendMessage(\"§eEntregue pelo menos alguns materiais antes de construir.\");\n    openProject(player, key);\n    return;\n  }\n  // construção completa, sem giro: usa a estrutura exata (baús ligados, água, estados idênticos)\n  const complete = build.groups.every((g) => g.free || (s.delivered[g.id] || 0) >= g.count);\n  const exact = s.rot === 0 && totalPlaced(build, s) === 0 && (s.layerLimit == null || s.layerLimit >= build.size.y) && complete;\n  startJob(player, key, { kind: \"build\", structure: exact });\n}\n\nfunction cellOf(fp, r, b) {\n  const [dx, dz] = rotCell(b[0], b[2], r);\n  return { x: fp.stand.x + dx, y: fp.stand.y + b[1], z: fp.stand.z + dz };\n}\nfunction placeBlock(dim, build, fp, r, b) {\n  try {\n    const blk = dim.getBlock(cellOf(fp, r, b));\n    if (!blk) return false;\n    blk.setPermutation(permFor(build, b[3], r));\n    return true;\n  } catch { return false; }\n}\nfunction clearBlock(dim, fp, r, b) {\n  try {\n    const blk = dim.getBlock(cellOf(fp, r, b));\n    if (!blk) return false;\n    blk.setType(\"minecraft:air\");\n    return true;\n  } catch { return false; }\n}\nfunction giveUp(job, text) {\n  findPlayer(job.player)?.sendMessage(text);\n  return true;\n}\n\nfunction groupReady(g, lim, s) { return (s.placed[g.id] || 0) >= capFor(g.blocks, lim); }\n\nfunction finishBuild(key, s, build, dim, who) {\n  removeHolo(dim, build, s);\n  deleteState(key);\n  who?.sendMessage(\"§aConstrução concluída!\");\n}\n\nfunction processBuild(key, job) {\n  const c = ctx(key);\n  if (!c) return true;\n  const { s, build, dim } = c;\n  const who = findPlayer(job.player);\n  const fp = footprint(build, s.rot, s);\n\n  // modo exato: coloca a estrutura inteira de uma vez\n  if (job.structure) {\n    try {\n      world.structureManager.place(build.structureId, dim, fp.M);\n      for (const g of build.groups) s.placed[g.id] = g.blocks.length;\n      finishBuild(key, s, build, dim, who);\n      return true;\n    } catch (e) {\n      job.blocked++;\n      if (job.blocked <= 100) return false; // área ainda carregando: tenta de novo\n      job.structure = false;\n      job.blocked = 0;\n      who?.sendMessage(`§eNão consegui colocar a estrutura exata (${e}). Vou construir bloco a bloco.`);\n    }\n  }\n\n  const lim = s.layerLimit ?? build.size.y;\n  let budget = BATCH;\n  let blocked = false;\n\n  for (const g of build.groups) {\n    // uma fase só começa quando todas as anteriores estão completas (até o limite de altura)\n    if (build.groups.some((o) => o.phase < g.phase && !groupReady(o, lim, s))) continue;\n    const cap = capFor(g.blocks, lim);\n    const target = g.free ? cap : Math.min(Math.floor((s.delivered[g.id] || 0) * g.bpi), cap);\n    let p = s.placed[g.id] || 0;\n    while (p < target && budget > 0) {\n      if (!placeBlock(dim, build, fp, s.rot, g.blocks[p])) { blocked = true; break; }\n      p++; budget--;\n    }\n    s.placed[g.id] = p;\n    if (blocked || budget <= 0) break;\n  }\n\n  if (blocked) {\n    saveState(key, s);\n    job.blocked++;\n    if (job.blocked > 200) return giveUp(job, \"§cNão consegui colocar os blocos (área não carregada ou fora do mundo). Fique perto da construção e tente de novo.\");\n    return false;\n  }\n  job.blocked = 0;\n\n  const allDone = lim >= build.size.y && build.groups.every((g) => (s.placed[g.id] || 0) >= g.blocks.length);\n  if (allDone) {\n    finishBuild(key, s, build, dim, who);\n    return true;\n  }\n  saveState(key, s);\n  if (budget <= 0) return false; // continua no próximo tick\n  const faltaMaterial = build.groups.some((g) => !g.free && Math.floor((s.delivered[g.id] || 0) * g.bpi) < capFor(g.blocks, lim));\n  who?.sendMessage(`§aBlocos colocados: ${totalPlaced(build, s)}/${build.total}. ` +\n    (faltaMaterial ? \"Entregue mais materiais e construa de novo para continuar (cada fase só começa quando a anterior está completa).\" : \"Aumente o limite de altura para continuar.\"));\n  return true;\n}\n\nfunction processUndo(key, job) {\n  const c = ctx(key);\n  if (!c) return true;\n  const { s, build, dim } = c;\n  const fp = footprint(build, s.rot, s);\n  let budget = BATCH;\n  let blocked = false;\n  const order = build.groups.slice().reverse();\n  for (const g of order) {\n    let p = s.placed[g.id] || 0;\n    while (p > 0 && budget > 0) {\n      if (!clearBlock(dim, fp, s.rot, g.blocks[p - 1])) { blocked = true; break; }\n      p--; budget--;\n    }\n    s.placed[g.id] = p;\n    if (blocked || budget <= 0) break;\n  }\n  saveState(key, s);\n  if (blocked) {\n    job.blocked++;\n    if (job.blocked > 200) return giveUp(job, \"§cNão consegui remover os blocos (área não carregada). Fique perto e tente de novo.\");\n    return false;\n  }\n  job.blocked = 0;\n  if (totalPlaced(build, s) === 0) {\n    if (s.holo !== false) spawnHolo(dim, build, s);\n    findPlayer(job.player)?.sendMessage(\"§aConstrução desfeita. Os materiais continuam entregues na mesa.\");\n    return true;\n  }\n  return false;\n}\n\nfunction fillColumn(dim, x, y, z) {\n  for (let d = 0; d < 24; d++) {\n    const b = dim.getBlock({ x, y: y - d, z });\n    if (!b) return;\n    if (b.isAir || b.isLiquid) b.setType(d === 0 ? \"minecraft:grass_block\" : \"minecraft:dirt\");\n    else return;\n  }\n}\n\nfunction processLevel(key, job) {\n  const c = ctx(key);\n  if (!c) return true;\n  const { s, build, dim } = c;\n  const fp = footprint(build, s.rot, s);\n  if (overlapsTable(fp, build, s)) return giveUp(job, \"§cA área encosta na mesa. Nivelamento cancelado.\");\n  if (job.stage === \"clear\") {\n    let n = 0;\n    while (job.y < build.size.y && n < 10) {\n      const y = fp.M.y + job.y;\n      try {\n        dim.runCommand(`fill ${fp.M.x} ${y} ${fp.M.z} ${fp.M.x + fp.w - 1} ${y} ${fp.M.z + fp.d - 1} air`);\n      } catch {\n        job.blocked++;\n        if (job.blocked > 200) return giveUp(job, \"§cNão consegui limpar a área (não carregada ou fora do mundo). Fique perto e tente de novo.\");\n        return false;\n      }\n      job.blocked = 0;\n      job.y++; n++;\n    }\n    if (job.y >= build.size.y) { job.stage = \"fill\"; job.i = 0; }\n    return false;\n  }\n  const cols = fp.w * fp.d;\n  let n = 0;\n  while (job.i < cols && n < 300) {\n    const cx = fp.M.x + (job.i % fp.w), cz = fp.M.z + Math.floor(job.i / fp.w);\n    try { fillColumn(dim, cx, fp.M.y - 1, cz); } catch {}\n    job.i++; n++;\n  }\n  if (job.i >= cols) {\n    findPlayer(job.player)?.sendMessage(\"§aTerreno nivelado.\");\n    return true;\n  }\n  return false;\n}\n\nfunction processScan(key, job) {\n  const c = ctx(key);\n  if (!c) return true;\n  const { s, build, dim } = c;\n  const fp = footprint(build, s.rot, s);\n  let n = 0;\n  if (job.stage === \"blocks\") {\n    const all = allBlocks(build);\n    while (job.i < all.length && n < 2000) {\n      let blk;\n      try { blk = dim.getBlock(cellOf(fp, s.rot, all[job.i])); } catch {}\n      if (!blk) job.unloaded++;\n      else if (!blk.isAir) job.replaced++;\n      job.i++; n++;\n    }\n    if (job.i >= all.length) { job.stage = \"holes\"; job.i = 0; }\n    return false;\n  }\n  const base = baseColumns(build);\n  while (job.i < base.length && n < 2000) {\n    const [dx, dz] = rotCell(base[job.i][0], base[job.i][1], s.rot);\n    let blk;\n    try { blk = dim.getBlock({ x: fp.stand.x + dx, y: fp.stand.y - 1, z: fp.stand.z + dz }); } catch {}\n    if (blk && (blk.isAir || blk.isLiquid)) job.holes++;\n    job.i++; n++;\n  }\n  if (job.i >= base.length) {\n    const who = findPlayer(job.player);\n    who?.sendMessage(`§eTerreno: ${job.replaced} blocos existentes serão substituídos • ${job.holes} colunas da base ficam sem chão` +\n      (job.unloaded > 0 ? ` • ${job.unloaded} posições não carregadas (chegue mais perto)` : \"\") +\n      (job.replaced > 0 || job.holes > 0 ? \". Use \\\"Nivelar terreno\\\" se quiser limpar a área.\" : \". Está tudo certo.\"));\n    return true;\n  }\n  return false;\n}\n\nconst JOB_HANDLERS = { build: processBuild, undo: processUndo, level: processLevel, scan: processScan };\n\nsystem.runInterval(() => {\n  for (const [key, job] of [...jobs]) {\n    let finished = true;\n    try { finished = JOB_HANDLERS[job.kind](key, job); }\n    catch (e) { findPlayer(job.player)?.sendMessage(`§cErro: ${e}`); }\n    if (finished) jobs.delete(key);\n  }\n}, 1);\n\n// ---------- contorno (partículas) e limpeza ----------\nfunction drawBox(dim, x0, y0, z0, sx, sy, sz) {\n  const pts = [];\n  for (let i = 0; i <= sx; i++) for (const y of [0, sy]) for (const z of [0, sz]) pts.push([i, y, z]);\n  for (let j = 0; j <= sy; j++) for (const x of [0, sx]) for (const z of [0, sz]) pts.push([x, j, z]);\n  for (let k = 0; k <= sz; k++) for (const x of [0, sx]) for (const y of [0, sy]) pts.push([x, y, k]);\n  for (const [dx, dy, dz] of pts) {\n    try { dim.spawnParticle(OUTLINE_PARTICLE, { x: x0 + dx, y: y0 + dy, z: z0 + dz }); } catch {}\n  }\n}\n\nsystem.runInterval(() => {\n  for (const key of getIndex()) {\n    const s = loadState(key);\n    if (!s) { setIndex(getIndex().filter((k) => k !== key)); continue; }\n    const build = BUILDS[s.build];\n    let dim;\n    try { dim = world.getDimension(s.dim); } catch { continue; }\n\n    // mesa quebrada (por jogador, pistão, explosão...): devolve o que não virou bloco\n    let blk;\n    try { blk = dim.getBlock({ x: s.x, y: s.y, z: s.z }); } catch {}\n    if (blk && blk.typeId !== TABLE_ID) {\n      if (build) { removeHolo(dim, build, s); refundItems(dim, s, unusedItems(build, s)); }\n      jobs.delete(key);\n      deleteState(key);\n      continue;\n    }\n    if (!build) continue;\n\n    const near = dim.getPlayers({ location: { x: s.x, y: s.y, z: s.z }, maxDistance: OUTLINE_RANGE });\n    if (near.length === 0) continue;\n    if (s.holo !== false && !jobs.has(key)) spawnHolo(dim, build, s); // recria se alguém sumiu com ele\n    if (s.outline) {\n      const fp = footprint(build, s.rot, s);\n      drawBox(dim, fp.M.x, fp.M.y, fp.M.z, fp.w, build.size.y, fp.d);\n    }\n  }\n}, 20);\n\n// remove armor stands de hologramas da versão 1.0 (que dependiam do pack HoloPrint)\nsystem.runTimeout(() => {\n  for (const id of [\"overworld\", \"nether\", \"the_end\"]) {\n    try {\n      for (const e of world.getDimension(id).getEntities({ type: \"minecraft:armor_stand\", tags: [\"mesa_holo\"] })) e.remove();\n    } catch {}\n  }\n}, 100);\n"}, "Mesa de Construcao BP/blocks/mesa_construcao.json": {"t": "text", "d": "{\n  \"format_version\": \"1.21.80\",\n  \"minecraft:block\": {\n    \"description\": {\n      \"identifier\": \"mesa:mesa_construcao\",\n      \"menu_category\": {\n        \"category\": \"construction\"\n      }\n    },\n    \"components\": {\n      \"minecraft:geometry\": {\n        \"identifier\": \"geometry.mesa_p0\"\n      },\n      \"minecraft:material_instances\": {\n        \"*\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"madeira\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"frente\": {\n          \"texture\": \"mesa_gaveta_esq\",\n          \"render_method\": \"opaque\"\n        }\n      },\n      \"minecraft:destructible_by_mining\": {\n        \"seconds_to_destroy\": 2.5\n      },\n      \"minecraft:destructible_by_explosion\": {\n        \"explosion_resistance\": 10\n      },\n      \"minecraft:map_color\": \"#3b6fb0\"\n    }\n  }\n}"}, "Mesa de Construcao BP/blocks/mesa_p2.json": {"t": "text", "d": "{\n  \"format_version\": \"1.21.80\",\n  \"minecraft:block\": {\n    \"description\": {\n      \"identifier\": \"mesa:mesa_p2\",\n      \"menu_category\": {\n        \"category\": \"none\",\n        \"is_hidden_in_commands\": true\n      }\n    },\n    \"components\": {\n      \"minecraft:geometry\": {\n        \"identifier\": \"geometry.mesa_p2\"\n      },\n      \"minecraft:material_instances\": {\n        \"*\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"madeira\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"topo\": {\n          \"texture\": \"mesa_topo_esq\",\n          \"render_method\": \"opaque\"\n        },\n        \"quadro\": {\n          \"texture\": \"mesa_planta_esq\",\n          \"render_method\": \"opaque\"\n        },\n        \"papel\": {\n          \"texture\": \"mesa_papel\",\n          \"render_method\": \"opaque\"\n        }\n      },\n      \"minecraft:destructible_by_mining\": {\n        \"seconds_to_destroy\": 2.5\n      },\n      \"minecraft:destructible_by_explosion\": {\n        \"explosion_resistance\": 10\n      },\n      \"minecraft:map_color\": \"#3b6fb0\",\n      \"minecraft:loot\": \"loot_tables/empty.json\"\n    }\n  }\n}"}, "Mesa de Construcao BP/blocks/mesa_p3.json": {"t": "text", "d": "{\n  \"format_version\": \"1.21.80\",\n  \"minecraft:block\": {\n    \"description\": {\n      \"identifier\": \"mesa:mesa_p3\",\n      \"menu_category\": {\n        \"category\": \"none\",\n        \"is_hidden_in_commands\": true\n      }\n    },\n    \"components\": {\n      \"minecraft:geometry\": {\n        \"identifier\": \"geometry.mesa_p3\"\n      },\n      \"minecraft:material_instances\": {\n        \"*\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"madeira\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"topo\": {\n          \"texture\": \"mesa_topo_dir\",\n          \"render_method\": \"opaque\"\n        },\n        \"quadro\": {\n          \"texture\": \"mesa_planta_dir\",\n          \"render_method\": \"opaque\"\n        },\n        \"papel\": {\n          \"texture\": \"mesa_papel\",\n          \"render_method\": \"opaque\"\n        }\n      },\n      \"minecraft:destructible_by_mining\": {\n        \"seconds_to_destroy\": 2.5\n      },\n      \"minecraft:destructible_by_explosion\": {\n        \"explosion_resistance\": 10\n      },\n      \"minecraft:map_color\": \"#3b6fb0\",\n      \"minecraft:loot\": \"loot_tables/empty.json\"\n    }\n  }\n}"}, "Mesa de Construcao BP/blocks/mesa_p1.json": {"t": "text", "d": "{\n  \"format_version\": \"1.21.80\",\n  \"minecraft:block\": {\n    \"description\": {\n      \"identifier\": \"mesa:mesa_p1\",\n      \"menu_category\": {\n        \"category\": \"none\",\n        \"is_hidden_in_commands\": true\n      }\n    },\n    \"components\": {\n      \"minecraft:geometry\": {\n        \"identifier\": \"geometry.mesa_p1\"\n      },\n      \"minecraft:material_instances\": {\n        \"*\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"madeira\": {\n          \"texture\": \"mesa_madeira\",\n          \"render_method\": \"opaque\"\n        },\n        \"frente\": {\n          \"texture\": \"mesa_gaveta_dir\",\n          \"render_method\": \"opaque\"\n        }\n      },\n      \"minecraft:destructible_by_mining\": {\n        \"seconds_to_destroy\": 2.5\n      },\n      \"minecraft:destructible_by_explosion\": {\n        \"explosion_resistance\": 10\n      },\n      \"minecraft:map_color\": \"#3b6fb0\",\n      \"minecraft:loot\": \"loot_tables/empty.json\"\n    }\n  }\n}"}, "Mesa de Construcao RP/pack_icon.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABlUlEQVR4nO3coQ3CUBRAUUqQKCSqg3SQSuZlChSSFcoGVP004Z5j2+R9cfMEoX9al3k7kXU++gAcSwBxAogTQJwA4gQQJ4C4y94Lz+tj6AFu9/nn88/7Zf5ANkCcAOIEECeAOAHECSBOAHECiBNAnADiBBAngDgBxAkgTgBxAogTQJwA4gQQJ4A4AcQJIE4AcbvfBez9b30088fOtwHiBBAngDgBxAkgTgBxAojb/R3g37+Pr8+3AeIEECeAOAHECSBOAHECiBNAnADiBBAngDgBxAkgTgBxAogTQJwA4gQQJ4A4AcQJIE4AcQKIcz9AfL4NECeAOAHECSBOAHECiBNAnPsB4vNtgDgBxAkgTgBxAogTQJwA4gQQJ4A4AcQJIE4AcQKIE0CcAOIEECeAOAHECSBOAHECiBNAnADi3A8Qn28DxAkgTgBxAogTQJwA4gQQ536A+HwbIE4AcQKIE0CcAOIEECeAOAHECSBOAHECiBNAnADiBBAngLhpXebt6ENwHBsgTgBxAogTQJwA4gQQJ4C4L/ZgNVV8SVAKAAAAAElFTkSuQmCC"}, "Mesa de Construcao RP/manifest.json": {"t": "text", "d": "{\n  \"format_version\": 2,\n  \"header\": {\n    \"name\": \"Mesa de Construção v1.3.1 TESTE (RP)\",\n    \"description\": \"v1.3.1 - Texturas, modelos e hologramas da Mesa de Construção.\",\n    \"uuid\": \"26c13a3e-ace6-4002-bf46-00028f89e0fe\",\n    \"version\": [\n      1,\n      3,\n      1\n    ],\n    \"min_engine_version\": [\n      1,\n      21,\n      80\n    ]\n  },\n  \"modules\": [\n    {\n      \"type\": \"resources\",\n      \"uuid\": \"77ec5494-6726-4ad1-9c1b-9f297317094d\",\n      \"version\": [\n        1,\n        3,\n        1\n      ]\n    }\n  ],\n  \"metadata\": {\n    \"product_type\": \"addon\",\n    \"authors\": [\"yxvll9_\"]\n  }\n}"}, "Mesa de Construcao RP/credits.txt": {"t": "text", "d": "Mesa de Construção - arte da mesa original.\nHologramas gerados a partir de packs criados com HoloPrint (https://github.com/Holoprint/Holoprint), uso pessoal.\n"}, "Mesa de Construcao RP/materials/entity.material": {"t": "text", "d": "{\"materials\": {\"version\": \"1.0.0\", \"mesa_hologram:entity_alphablend\": {\"+states\": [\"DisableCulling\"]}}}"}, "Mesa de Construcao RP/models/blocks/mesa_construcao.geo.json": {"t": "text", "d": "{\"format_version\":\"1.21.0\",\"minecraft:geometry\":[{\"description\":{\"identifier\":\"geometry.mesa_p0\",\"texture_width\":16,\"texture_height\":16},\"bones\":[{\"name\":\"root\",\"pivot\":[0,0,0],\"cubes\":[{\"origin\":[-8,0,-8],\"size\":[16,16,16],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"frente\"},\"east\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"down\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"}}}]}]},{\"description\":{\"identifier\":\"geometry.mesa_p1\",\"texture_width\":16,\"texture_height\":16},\"bones\":[{\"name\":\"root\",\"pivot\":[0,0,0],\"cubes\":[{\"origin\":[-8,0,-8],\"size\":[16,16,16],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"frente\"},\"east\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"},\"down\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"}}}]}]},{\"description\":{\"identifier\":\"geometry.mesa_p2\",\"texture_width\":16,\"texture_height\":16},\"bones\":[{\"name\":\"root\",\"pivot\":[0,0,0],\"cubes\":[{\"origin\":[-8,0,-8],\"size\":[16,2,16],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"east\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"topo\"},\"down\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"}}},{\"origin\":[-8,2,-8],\"size\":[16,13,2],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[16,13],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[16,13],\"material_instance\":\"quadro\"},\"east\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"down\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"}}},{\"origin\":[-8,2,-6],\"size\":[2,13,14],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"east\":{\"uv\":[0,0],\"uv_size\":[14,13],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[14,13],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[2,14],\"material_instance\":\"madeira\"},\"down\":{\"uv\":[0,0],\"uv_size\":[2,14],\"material_instance\":\"madeira\"}}},{\"origin\":[-6,2,-1],\"size\":[8,3,3],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[8,3],\"material_instance\":\"papel\"},\"south\":{\"uv\":[0,0],\"uv_size\":[8,3],\"material_instance\":\"papel\"},\"east\":{\"uv\":[0,0],\"uv_size\":[3,3],\"material_instance\":\"papel\"},\"west\":{\"uv\":[0,0],\"uv_size\":[3,3],\"material_instance\":\"papel\"},\"up\":{\"uv\":[0,0],\"uv_size\":[8,3],\"material_instance\":\"papel\"},\"down\":{\"uv\":[0,0],\"uv_size\":[8,3],\"material_instance\":\"papel\"}}}]}]},{\"description\":{\"identifier\":\"geometry.mesa_p3\",\"texture_width\":16,\"texture_height\":16},\"bones\":[{\"name\":\"root\",\"pivot\":[0,0,0],\"cubes\":[{\"origin\":[-8,0,-8],\"size\":[16,2,16],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"east\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"topo\"},\"down\":{\"uv\":[0,0],\"uv_size\":[16,16],\"material_instance\":\"madeira\"}}},{\"origin\":[-8,2,-8],\"size\":[16,13,2],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[16,13],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[16,13],\"material_instance\":\"quadro\"},\"east\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"},\"down\":{\"uv\":[0,0],\"uv_size\":[16,2],\"material_instance\":\"madeira\"}}},{\"origin\":[6,2,-6],\"size\":[2,13,14],\"uv\":{\"north\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"south\":{\"uv\":[0,0],\"uv_size\":[2,13],\"material_instance\":\"madeira\"},\"east\":{\"uv\":[0,0],\"uv_size\":[14,13],\"material_instance\":\"madeira\"},\"west\":{\"uv\":[0,0],\"uv_size\":[14,13],\"material_instance\":\"madeira\"},\"up\":{\"uv\":[0,0],\"uv_size\":[2,14],\"material_instance\":\"madeira\"},\"down\":{\"uv\":[0,0],\"uv_size\":[2,14],\"material_instance\":\"madeira\"}}}]}]}]}"}, "Mesa de Construcao RP/texts/en_US.lang": {"t": "text", "d": "tile.mesa:mesa_construcao.name=Building Table v1.3.1 TEST\ntile.mesa:mesa_p1.name=Building Table (part)\ntile.mesa:mesa_p2.name=Building Table (part)\ntile.mesa:mesa_p3.name=Building Table (part)\n"}, "Mesa de Construcao RP/texts/languages.json": {"t": "text", "d": "[\"en_US\", \"pt_BR\"]"}, "Mesa de Construcao RP/texts/pt_BR.lang": {"t": "text", "d": "tile.mesa:mesa_construcao.name=Mesa de Construção v1.3.1 TESTE\ntile.mesa:mesa_p1.name=Mesa de Construção (parte)\ntile.mesa:mesa_p2.name=Mesa de Construção (parte)\ntile.mesa:mesa_p3.name=Mesa de Construção (parte)\n"}, "Mesa de Construcao RP/textures/terrain_texture.json": {"t": "text", "d": "{\n  \"resource_pack_name\": \"mesa_construcao\",\n  \"texture_name\": \"atlas.terrain\",\n  \"padding\": 8,\n  \"num_mip_levels\": 4,\n  \"texture_data\": {\n    \"mesa_madeira\": {\n      \"textures\": \"textures/blocks/mesa_madeira\"\n    },\n    \"mesa_gaveta_esq\": {\n      \"textures\": \"textures/blocks/mesa_gaveta_esq\"\n    },\n    \"mesa_gaveta_dir\": {\n      \"textures\": \"textures/blocks/mesa_gaveta_dir\"\n    },\n    \"mesa_planta_esq\": {\n      \"textures\": \"textures/blocks/mesa_planta_esq\"\n    },\n    \"mesa_planta_dir\": {\n      \"textures\": \"textures/blocks/mesa_planta_dir\"\n    },\n    \"mesa_topo_esq\": {\n      \"textures\": \"textures/blocks/mesa_topo_esq\"\n    },\n    \"mesa_topo_dir\": {\n      \"textures\": \"textures/blocks/mesa_topo_dir\"\n    },\n    \"mesa_papel\": {\n      \"textures\": \"textures/blocks/mesa_papel\"\n    }\n  }\n}"}, "Mesa de Construcao RP/textures/blocks/mesa_papel.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAR0lEQVR4nGNc0JPyn4ECwMLAwMDg4uFGluY9O3ZBDHjy6AFlLpCRUyBL841rtxiYyLYaCig2YDQMRsOAgYFaYXDj2i2yDQAAbm8bh99IKBYAAAAASUVORK5CYII="}, "Mesa de Construcao RP/textures/blocks/mesa_gaveta_dir.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABI0lEQVR4nJ2TsUoDQRCGv53bXO6yqUKwVWIrAQvrgL6Gr6API4LgE/gSprJTEGzF9Eq0O5fbyeYsJIeJRLn7qp1l5v93mB1zdTapjDHEGEnTlKIocM6xwntPr9ejLEsAFosFeZ4TYySEgCRJQlmWVFWFquKcI4SAqgLUySKCiJCmKcvlkhAC3W4XO32Y0YbJ4S6qiplenlZNi69v7uqznb99NCoe7gwAONgb0O/3kabuK0QE7z22rUCSJIjIdoGL6edafH7cW4sfn18B2r/g5GifGON2gU3HTVT17xb+o9PpYIxpL3B7/wKAXc21KePRkDzPsT9/VROMMd8tjEdDgHpRvPdkWYb3HhEhy7J685xzFEWBtRZjDKqKfZrNG/i+/7r5Arl6aIubrAaZAAAAAElFTkSuQmCC"}, "Mesa de Construcao RP/textures/blocks/mesa_planta_esq.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAo0lEQVR4nGOMsFH4z0ABYGFgYGA4xZMAFxCSUmB49+wB0XwmSmyn2ICTq+shXhCSUkCRIIa/fWI8g2f+QogBpPgZptk8tJGBgQEaiKQ4mYGBAa6ZJANOrq5nMA9txPAOUWFwcnU9g2f+Qrg4sjzBMIDZjEserxdgNsP8jg3gNQDZzzBXwFwAM5SoMEAXg7GJTgfIapDl3z17QFo0YhNjpDQ7AwDLP1eVEPAjUgAAAABJRU5ErkJggg=="}, "Mesa de Construcao RP/textures/blocks/mesa_madeira.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABpUlEQVR4nKWTPa4UMRCEv27bb3pn9wIEkBKQIBGQwYk4D7chQyIgQbwUAiQi0pnd8U+PCZ7Ggnid2JLL7arqavn44X0XEWKM1FoBEBFEhFIKvXfmeaa1Ru+dEMLYr9creoC2baPWSikFgBACZoaZsSwLIkLvHXcf52maiKfTiW3bmKaJ2+2GmZFzZtu2USiEAEAphcvlQq2Vfd9RVeKnrz+5Z8W3r56Tc0ZEBouUEq01WmuICGZGCIF1XUkpUWslhPDE4Hq9DqOWZSGEQK0Vd2eaJnrvqCqllPHYzBARcs7E8/nMvu8D0FojhEBKiZwzDw8PiAi1VkQEVUVVOT6OXx5/3efBu9cvqLWSUgLA3XF3YoyYGe5OrXUw670TYySEgIgQD82lFFR1mOnuLMvC5XIBGL0/8EfotJSCmTHPMyKCu49CKSXcnX3fcXdSSqMrx338/P33fR68efkMVWXbNlJKlFIQEQB675jZmAMzA/gviaqq7Ps+gqGqzPP8pE91hCalRO99YA9p8RgeM2Nd1xGQQ29rjZzzKPiv0SJC/Pbjz10e/AV/cgP3KndXzwAAAABJRU5ErkJggg=="}, "Mesa de Construcao RP/textures/blocks/mesa_topo_esq.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARklEQVR4nGOMsFH4z0ABYGFgYGA4xZMAFxCSUmB49+wB0XwmSmynigEsDAwQZyEDUvgsDAwMJPl5NAxGwwAbn2IvMFKanQFPUjR1UDN6IgAAAABJRU5ErkJggg=="}, "Mesa de Construcao RP/textures/blocks/mesa_planta_dir.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA2ElEQVR4nGOMsFH4z0ABYLmj1sDw7tkDuICQlALRfLMvCxiYKLGdgYGBgYWQgu0T47GKm4c2MjAwMDAwvv78/79n/kKybFe51cDA4pm/kGH7xHi4ieh+Prm6HqftDAxQL5iHNjKcXF2PIgEDnvkLMQIRGcDDAGYIug2EAKNJ0gKMdLB9YjwDMeGicqsBEo3vnj2AY5gLtk+Mh/PR5ZHZLPii6eTqeoIugQciDAhJKcDj3jy0ESPQsBqATRGyGLo8nH8LagC2aIKJEcobLAwM2BMLsYCR0uwMAMukbkOR9M9cAAAAAElFTkSuQmCC"}, "Mesa de Construcao RP/textures/blocks/mesa_topo_dir.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAATUlEQVR4nGOMsFH4z0ABYLmj1sDw7tkDuICQlALRfLMvCxiYKLGdgYGBcgNYGBggzkIGRPNvQQ0gNwwYGKjghdEwGA0DBgYGBkZKszMApLA7zVVg+qQAAAAASUVORK5CYII="}, "Mesa de Construcao RP/textures/blocks/mesa_gaveta_esq.png": {"t": "b64", "d": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABKklEQVR4nJ2TMUpDQRCGv9m32WVDKhURUgkiWKQRtFEb8RCewEbwMIKNJ/AQYmUhVqKQKmhjIUEt87LJZsdCeGhQ8b2/m2Hmm59hRs6O99Q5R4yRlBIAIQREhLIscc4xmUxot9vEGBERZrMZqgqAERFEhJQS3ntCCJRliaoSQkBVabVa5JxJKWGtrZoBrHOOlBI3/ReayF7eDqrg6HC3PmBzfQVrLbf9ZwBeh++1ACbnTIyx9uQKAJ9bbyp7Nxj+WXB6NfoWn+y3vzvY6XU52F5r7sB7z2g0+rVgfuK8jDEG731zB1/voBFga6NLjJH7x1cAlpYX6gHG4zFFUQBwfnFd3wFAURT0VherJ+l0OqSUEBFUFREh58x0Oq1yqooxBvvw9PYD9//n/AFvpnJP3neCFgAAAABJRU5ErkJggg=="}};
+
+// ===== Interface =====
+const $ = (s) => document.querySelector(s);
+const PACKS = []; // { pack, nome, id, idEditado, gratis:Set, erro }
+let BASE = null;  // { zip, nome, pastaBP, pastaRP } ou null
+let ultimaUrl = null;
+
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function fmt(n) { return n.toLocaleString("pt-BR"); }
+function b64ToU8(b) { const s = atob(b); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+const tick = () => new Promise((r) => setTimeout(r, 0));
+function log(msg, cls) { const el = $("#log"); const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = msg; el.appendChild(d); el.scrollTop = el.scrollHeight; }
+
+function idUnico(base, ignorar) {
+  let id = slug(base), n = 2;
+  const usados = new Set(PACKS.filter((p) => p !== ignorar).map((p) => p.id));
+  const raiz = id;
+  while (usados.has(id)) id = raiz + "_" + n++;
+  return id;
+}
+
+async function adicionarPacks(files) {
+  for (const f of files) {
+    const item = { nomeArquivo: f.name, gratis: new Set(), idEditado: false };
+    try {
+      log("Lendo " + f.name + "…");
+      await tick();
+      const buf = await f.arrayBuffer();
+      const pack = await lerPack(buf, f.name);
+      item.pack = pack;
+      const sugestao = pack.nomePack || f.name.replace(/\.[^.]+$/, "");
+      item.nome = sugestao;
+      item.id = idUnico(sugestao, item);
+      item.gratis = new Set(pack.materiais.filter((m) => m.gratis).map((m) => m.nome));
+      PACKS.push(item);
+      log("OK: " + f.name + " (" + pack.an.size.join("×") + ", " + fmt(pack.an.blocos.length) + " blocos)", "ok");
+    } catch (e) {
+      log("Erro em " + f.name + ": " + e.message, "err");
+    }
+  }
+  desenharPacks();
+}
+
+function desenharPacks() {
+  const box = $("#packs");
+  box.innerHTML = "";
+  if (!PACKS.length) { box.innerHTML = '<p class="dica">Nenhum pack escolhido ainda.</p>'; $("#gerar").disabled = true; return; }
+  $("#gerar").disabled = false;
+  PACKS.forEach((it, idx) => {
+    const p = it.pack, an = p.an;
+    const card = document.createElement("div");
+    card.className = "pack";
+    const avisos = [];
+    if (p.avisoEstruturas) avisos.push("Este pack tem mais de uma estrutura; usei só a primeira.");
+    if (an.ignorados) avisos.push(fmt(an.ignorados) + " blocos técnicos foram ignorados.");
+    if (an.molhados) avisos.push(fmt(an.molhados) + " blocos com água dentro (waterlogged) não são reconstruídos.");
+    const mats = p.materiais.map((m, i) => `<label class="mat"><input type="checkbox" data-i="${idx}" data-m="${i}" ${it.gratis.has(m.nome) ? "checked" : ""}><span class="mn">${esc(m.label)}</span><span class="mc">${fmt(m.count)}</span></label>`).join("");
+    card.innerHTML = `
+      <div class="ph"><strong>${esc(p.nomeArquivo)}</strong><button class="peq" data-rm="${idx}" title="Remover">✕</button></div>
+      <div class="meta">${an.size.join(" × ")} blocos · ${fmt(an.blocos.length)} blocos no total · ${p.materiais.length} materiais</div>
+      <label class="campo">Nome no menu da mesa<input type="text" data-nome="${idx}" value="${esc(it.nome)}"></label>
+      <label class="campo">ID interno <small>(letras minúsculas, números e _)</small><input type="text" data-id="${idx}" value="${esc(it.id)}" autocapitalize="none" autocomplete="off" spellcheck="false"></label>
+      ${avisos.map((a) => `<div class="aviso">${esc(a)}</div>`).join("")}
+      <details><summary>Materiais grátis (não cobram item da mesa)</summary>
+        <p class="dica">Marque o que a mesa deve construir sem pedir material (blocos impossíveis de conseguir, por exemplo). Água corrente já é grátis automaticamente.</p>
+        <div class="mats">${mats}</div></details>`;
+    box.appendChild(card);
+  });
+}
+
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.dataset.nome !== undefined) {
+    const it = PACKS[+t.dataset.nome]; it.nome = t.value;
+    if (!it.idEditado) { it.id = idUnico(t.value || "construcao", it); const campo = document.querySelector(`[data-id="${t.dataset.nome}"]`); if (campo) campo.value = it.id; }
+  } else if (t.dataset.id !== undefined) {
+    const it = PACKS[+t.dataset.id]; it.idEditado = true; it.id = t.value;
+  }
+});
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.m !== undefined && t.type === "checkbox") {
+    const it = PACKS[+t.dataset.i]; const m = it.pack.materiais[+t.dataset.m];
+    if (t.checked) it.gratis.add(m.nome); else it.gratis.delete(m.nome);
+  }
+});
+document.addEventListener("click", (e) => {
+  const rm = e.target.closest("[data-rm]");
+  if (rm) { PACKS.splice(+rm.dataset.rm, 1); desenharPacks(); }
+});
+
+$("#arqPacks").addEventListener("change", async (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) await adicionarPacks(fs); });
+$("#arqBase").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const zip = readZip(await f.arrayBuffer());
+    const pastas = new Set(zip.nomes.map((n) => n.split("/")[0]));
+    let pastaBP = null, pastaRP = null;
+    for (const p of pastas) {
+      if (!zip.tem(p + "/manifest.json")) continue;
+      const m = JSON.parse(dec.decode(await zip.ler(p + "/manifest.json")));
+      const tipos = (m.modules || []).map((x) => x.type);
+      if (tipos.includes("script") || tipos.includes("data")) pastaBP = p; else if (tipos.includes("resources")) pastaRP = p;
+    }
+    if (!pastaBP || !pastaRP) throw new Error("Não achei as duas pastas (BP e RP) dentro desse addon.");
+    const bj = zip.tem(pastaBP + "/scripts/builds.js") ? dec.decode(await zip.ler(pastaBP + "/scripts/builds.js")) : "";
+    const aviso = /export const BUILDS/.test(bj) && /function make\(/.test(bj) ? "" : " (aviso: o builds.js dele tem um formato diferente do que eu conheço; vou gerar no formato da versão 1.3.1)";
+    BASE = { zip, nome: f.name, pastaBP, pastaRP };
+    $("#baseinfo").innerHTML = `Usando: <strong>${esc(f.name)}</strong> <button class="peq" id="tirarBase">✕</button>${esc(aviso)}`;
+    $("#tirarBase").onclick = () => { BASE = null; $("#baseinfo").textContent = "Usando o addon que vem embutido aqui (versão 1.3.1)."; };
+  } catch (err) { log("Erro no addon base: " + err.message, "err"); }
+});
+
+function bumpVersao(v) {
+  if (Array.isArray(v)) return [v[0], v[1], (v[2] || 0) + 1];
+  if (typeof v === "string") { const p = v.split("."); p[2] = String((parseInt(p[2] || "0", 10) || 0) + 1); return p.join("."); }
+  return v;
+}
+const REL_POR_CONSTRUCAO = [
+  /^structures\/mesa\//, /^scripts\/data\//, /^scripts\/builds\.js$/, /^entities\/mesa_holo_/,
+  /^models\/entity\/mesa_/, /^entity\/mesa_holo_/, /^render_controllers\/mesa_holo_/, /^textures\/mesa\//,
+];
+
+async function gerar() {
+  const btn = $("#gerar");
+  btn.disabled = true; $("#log").innerHTML = ""; $("#baixar").hidden = true; $("#resumo").textContent = "";
+  try {
+    if (!PACKS.length) throw new Error("Escolha pelo menos um pack.");
+    // valida ids
+    const vistos = new Set();
+    for (const it of PACKS) {
+      it.id = slug(it.id); it.nome = (it.nome || "").trim() || it.id;
+      if (vistos.has(it.id)) throw new Error("Dois packs com o mesmo ID: " + it.id);
+      vistos.add(it.id);
+    }
+    // base
+    let pastaBP, pastaRP; const arquivos = new Map(); // caminho completo -> Uint8Array
+    if (BASE) {
+      pastaBP = BASE.pastaBP; pastaRP = BASE.pastaRP;
+      for (const n of BASE.zip.nomes) arquivos.set(n, await BASE.zip.ler(n));
+      log("Base: " + BASE.nome);
+    } else {
+      pastaBP = "Mesa de Construcao BP"; pastaRP = "Mesa de Construcao RP";
+      for (const [rel, v] of Object.entries(BASE_EMBUTIDA)) arquivos.set(rel, v.t === "text" ? enc.encode(v.d) : b64ToU8(v.d));
+    }
+    // remove arquivos de construções antigas da base
+    for (const k of [...arquivos.keys()]) {
+      const rel = k.startsWith(pastaBP + "/") ? k.slice(pastaBP.length + 1) : k.startsWith(pastaRP + "/") ? k.slice(pastaRP.length + 1) : null;
+      if (rel === null) continue;
+      const rp = k.startsWith(pastaRP + "/");
+      const ehModeloBloco = rp && /^models\/blocks\//.test(rel);
+      if (!ehModeloBloco && REL_POR_CONSTRUCAO.some((re) => re.test(rel))) arquivos.delete(k);
+    }
+    // gera cada construção
+    const lista = [];
+    for (const it of PACKS) {
+      log("Convertendo " + it.nome + "…");
+      await tick();
+      const r = await arquivosDoPack(it.pack, it.id, it.gratis, pastaBP, pastaRP);
+      for (const f of r.arquivos) arquivos.set(f.name, f.data);
+      // Nome no jogo: nome do HoloPrint + nome do addon
+      const addonNome = String($("#nomeSaida").value || "Mesa de Construção")
+        .replace(/\.(mcaddon|zip)$/i, "")
+        .replace(/[_]+/g, " ")
+        .trim() || "Mesa de Construção";
+      const nomeNoJogo = it.nome.includes(addonNome) ? it.nome : (it.nome + " · " + addonNome);
+      lista.push({ id: it.id, nome: nomeNoJogo });
+      const livres = r.dados.groups.filter((g) => g.free).reduce((a, g) => a + g.blocks.length, 0);
+      log(`  ${r.camadas} camadas, ${r.dados.groups.filter((g) => !g.free).length} materiais, ${fmt(livres)} blocos grátis`, "ok");
+    }
+    arquivos.set(pastaBP + "/scripts/builds.js", enc.encode(buildsJS(lista)));
+    // manifests: conquistas (product_type) + versão opcional
+    {
+      const kBP = pastaBP + "/manifest.json", kRP = pastaRP + "/manifest.json";
+      const bp = JSON.parse(dec.decode(arquivos.get(kBP))), rp = JSON.parse(dec.decode(arquivos.get(kRP)));
+      for (const m of [bp, rp]) {
+        m.metadata = m.metadata || {};
+        m.metadata.product_type = "addon";
+        if (!m.metadata.authors) m.metadata.authors = ["yxvll9_"];
+      }
+      if ($("#bump").checked) {
+        for (const m of [bp, rp]) {
+          m.header.version = bumpVersao(m.header.version);
+          (m.modules || []).forEach((x) => { x.version = bumpVersao(x.version); });
+        }
+        (bp.dependencies || []).forEach((d) => { if (d.uuid === rp.header.uuid) d.version = rp.header.version; });
+        log("Versão do addon aumentada para " + (Array.isArray(bp.header.version) ? bp.header.version.join(".") : bp.header.version));
+      }
+      arquivos.set(kBP, enc.encode(JSON.stringify(bp, null, 2)));
+      arquivos.set(kRP, enc.encode(JSON.stringify(rp, null, 2)));
+      log("Conquistas: product_type addon aplicado nos manifests.");
+    }
+    log("Compactando…");
+    await tick();
+    const ordem = [...arquivos.keys()].sort((a, b) => (a.startsWith(pastaBP) ? 0 : 1) - (b.startsWith(pastaBP) ? 0 : 1));
+    const zip = await writeZip(ordem.map((n) => ({ name: n, data: arquivos.get(n) })));
+    let nome = ($("#nomeSaida").value || "Mesa_de_Construcao").replace(/\.(mcaddon|zip)$/i, "").replace(/[^\w\-. ]+/g, "_");
+    nome += ".mcaddon";
+    if (ultimaUrl) URL.revokeObjectURL(ultimaUrl);
+    ultimaUrl = URL.createObjectURL(new Blob([zip], { type: "application/octet-stream" }));
+    const a = $("#baixar"); a.href = ultimaUrl; a.download = nome; a.hidden = false; a.textContent = "Baixar " + nome;
+    $("#resumo").textContent = `Pronto: ${lista.length} construção(ões), ${(zip.length / 1048576).toFixed(1)} MB. Abra o arquivo baixado no Minecraft para instalar.`;
+    log("Pronto!", "ok");
+  } catch (e) {
+    log("Erro: " + e.message, "err"); console.error(e);
+  } finally { btn.disabled = !PACKS.length; }
+}
+$("#gerar").addEventListener("click", gerar);
+$("#baseinfo").textContent = "Usando o addon que vem embutido aqui (versão 1.3.1).";
+desenharPacks();
+
+
+</script>
+</body>
+</html>
